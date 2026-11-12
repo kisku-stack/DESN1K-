@@ -49,6 +49,7 @@ body.hacked #hack{display:flex;animation:glitch .25s steps(2) infinite}
 #hack h2{font-size:clamp(22px,5vw,44px);border:0;margin:0;color:#ff4a5e}
 #hack button{background:none;color:#ff4a5e;border-color:#ff4a5e}
 @keyframes glitch{0%{transform:translate(0)}50%{transform:translate(-3px,2px);text-shadow:3px 0 #0ff,-3px 0 #f0f}100%{transform:translate(2px,-1px)}}
+.ana{border:2px solid var(--stamp);background:#f3ecd2;padding:10px;margin-bottom:10px}
 .toast{color:var(--stamp);font-weight:bold;min-height:1.4em}
 @media(prefers-reduced-motion:reduce){*{animation:none!important}}
 </style></head><body>
@@ -80,6 +81,9 @@ body.hacked #hack{display:flex;animation:glitch .25s steps(2) infinite}
     <span class="seg"><button id="srcD" class="on">Digital</button><button id="srcA">Analogue</button></span>
     <label><input type="checkbox" id="sm" checked> Smoothing</label></div>
   <div class="toast" id="toast"></div>
+  <div class="ana" id="anaBox" style="display:none"><b>Analogue channel active</b> <span id="potV">0</span>/1023
+    <div class="sl" style="margin:8px 0"><input type="range" id="pot" min="0" max="1023" value="0"></div>
+    <div class="sub" id="potNote"></div><button id="flip">Flip left servo (button)</button></div>
 
   <div class="mode" id="aoaBox"><header>Angle of attack <span id="aoaV">0°</span></header>
     <div class="sl" style="margin-top:8px"><input type="range" id="aoa" min="0" max="30" value="0"></div></div>
@@ -112,7 +116,7 @@ const CFG={minA:0,maxA:60,aoaMin:0,aoaMax:30,
   maxDefl:25};    // trailing-edge deflection at max servo angle (CHECK)
 // ====================================
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-const S={mode:1,src:'D',smooth:true,hacked:false,disco:false,conn:false};
+const S={mode:1,src:'D',smooth:true,hacked:false,disco:false,conn:false,pot:0,inv:false};
 const A={l:0,r:0}; let port,writer,logoClicks=0;
 const mid=()=>(CFG.minA+CFG.maxA)/2, span=()=>CFG.maxA-CFG.minA;
 const pct=a=>(a-CFG.minA)/span()*100;
@@ -163,6 +167,10 @@ function ghosts(){
   $('#g3l').style.bottom=pct(A.l)+'%';$('#g3r').style.bottom=pct(A.r)+'%';
 }
 function render(){
+  $('#anaBox').style.display=S.src==='A'?'block':'none';
+  $('#pot').disabled=S.conn;if(S.conn)$('#pot').value=S.pot;$('#potV').textContent=S.pot;
+  $('#flip').style.display=S.conn?'none':'inline-block';
+  $('#potNote').textContent=(S.conn?'Reading the real potentiometer. Press the physical button to flip the left servo.':'No Arduino connected: drag this slider to simulate the potentiometer.')+(S.inv?' Left servo flipped.':'');
   $$('.mode[data-m]').forEach(m=>{const on=+m.dataset.m===S.mode;m.classList.toggle('act',on);m.classList.toggle('off',!on)});
   $('#srcD').classList.toggle('on',S.src==='D');$('#srcA').classList.toggle('on',S.src==='A');
   $('#ctrl').classList.toggle('locked',S.src==='A'||S.hacked);
@@ -187,7 +195,7 @@ function setDisco(on){S.disco=on;document.body.classList.toggle('disco',on);send
 
 // ---- wiring up UI ----
 $$('.mode[data-m] header').forEach(h=>h.onclick=()=>setMode(+h.parentElement.dataset.m));
-$$('input[type=range]').forEach(i=>i.oninput=()=>{if(i.id==='aoa')send('AOA,'+i.value);render()});
+$$('input[type=range]').forEach(i=>i.oninput=()=>{if(i.id==='aoa')send('AOA,'+i.value);if(i.id==='pot'&&!S.conn)S.pot=+i.value;render()});
 $('#srcD').onclick=()=>{if(!S.hacked)setSrc('D')};$('#srcA').onclick=()=>setSrc('A');
 $('#sm').onchange=e=>{S.smooth=e.target.checked;send('SM,'+(S.smooth?1:0))};
 $('#lmin').onchange=$('#lmax').onchange=pushLimits;
@@ -195,6 +203,7 @@ $('#logo').onclick=()=>{if(++logoClicks>=5){logoClicks=0;setDisco(!S.disco)}};
 $('#hackBtn').onclick=()=>{S.hacked=true;document.body.classList.add('hacked');send('ALERT,1');setSrc('A',true);render()};
 $('#restore').onclick=()=>{S.hacked=false;document.body.classList.remove('hacked');send('ALERT,0');setSrc('D');};
 
+$('#flip').onclick=()=>{S.inv=!S.inv;render()};
 // ---- Web Serial ----
 $('#connect').onclick=async()=>{
   if(!('serial' in navigator)){toast('Use Chrome or Edge for USB link');return}
@@ -211,7 +220,7 @@ $('#connect').onclick=async()=>{
 };
 function telemetry(l){
   const p=l.split(',');if(p[0]!=='T'||p.length<7)return;
-  A.l=+p[2];A.r=+p[3];
+  A.l=+p[2];A.r=+p[3];S.pot=+p[1];S.inv=!!+p[5];
   const an=+p[4]?'A':'D';
   if(an!==S.src&&!S.hacked){S.src=an;toast(an==='A'?'Analogue override detected':'');}
   const d=!!+p[6];if(d!==S.disco){S.disco=d;document.body.classList.toggle('disco',d)}
@@ -222,6 +231,7 @@ function telemetry(l){
 let t0=performance.now();
 setInterval(()=>{
   const t=(performance.now()-t0)/1000;let[tl,tr]=target();
+  if(S.src==='A'){const a=CFG.minA+S.pot/1023*span();tr=a;tl=S.inv?CFG.maxA+CFG.minA-a:a}
   if(S.disco){const s=Math.sin(t*2.5);tl=mid()+s*span()/2;tr=mid()-s*span()/2}
   if(S.conn){if(S.src==='D'&&!S.hacked&&!S.disco)send(`D,${Math.round(tl)},${Math.round(tr)}`)}
   else{ // simulation
