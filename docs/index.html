@@ -24,7 +24,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--blue);outline-o
 .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:8px 0}
 svg{width:100%;height:auto;display:block}
 .read{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
-.read div{background:var(--paper2);padding:6px 8px}.read b{display:block;font-size:19px;color:var(--blue)}
+.read div{background:var(--paper2);padding:6px 8px}.read b{display:block;font-size:16px;color:var(--blue)}
 .mode{border:2px solid var(--ink);padding:10px;margin-bottom:10px;transition:opacity .25s,filter .25s}
 .mode.off{opacity:.28;filter:grayscale(1);pointer-events:none}
 .mode.off header{pointer-events:auto}
@@ -38,6 +38,10 @@ svg{width:100%;height:auto;display:block}
 .ghost{position:absolute;pointer-events:none;background:var(--stamp);opacity:.75}
 .sl:not(.v) .ghost{top:-3px;bottom:-3px;width:4px;margin-left:-2px}
 .sl.v .ghost{left:-3px;right:-3px;height:4px;margin-bottom:-2px}
+.bar{position:relative;flex:1;height:10px;background:var(--paper2);border:1px solid var(--ink)}
+.bar i{position:absolute;top:-4px;bottom:-4px;width:4px;margin-left:-2px}
+.bar .c{background:var(--blue)}.bar .g{background:var(--stamp);opacity:.75}
+.lr{display:flex;gap:8px;align-items:center;margin-top:8px}
 .pair{display:flex;gap:40px;justify-content:center}
 .pair div{text-align:center}
 .led{display:inline-block;width:14px;height:14px;border-radius:50%;background:var(--led);box-shadow:0 0 10px var(--led);vertical-align:-2px;border:2px solid var(--ink)}
@@ -69,7 +73,7 @@ body.hacked #hack{display:flex;animation:glitch .25s steps(2) infinite}
   <svg viewBox="0 0 480 190" aria-label="Wing profile"><line x1="20" y1="95" x2="460" y2="95" stroke="#8a8266" stroke-dasharray="4 4"/>
     <g id="afGroup"><path id="af" fill="#1f3a5f" fill-opacity=".85" stroke="#1d1c19" stroke-width="2"/><circle id="pivotDot" r="4" fill="none" stroke="#e6dec5" stroke-width="2"/><circle id="hingeDot" r="4" fill="#e6dec5" stroke="#1d1c19"/></g></svg>
   <div class="read">
-    <div>Morphed shape<b id="naca">-</b></div><div>TE deflection<b id="defl">-</b></div><div>Servo L / R<b id="lr">-</b></div>
+    <div>Morphed shape<b id="naca">-</b></div><div>Max camber<b id="camb">-</b></div><div>Thickness<b id="thk">-</b></div><div>TE deflection<b id="defl">-</b></div><div>Chord tilt<b id="tilt">-</b></div><div>Servo L / R<b id="lr">-</b></div>
   </div>
   <svg viewBox="0 0 480 90" aria-label="Front view"><g id="front" transform="translate(240 45)"><line id="fl" x1="0" y1="0" x2="-200" y2="0" stroke="#1d1c19" stroke-width="10"/><line id="fr" x1="0" y1="0" x2="200" y2="0" stroke="#1d1c19" stroke-width="10"/><circle r="9" fill="#b3261e"/></g></svg>
   <div class="sub">Roll view. Red marker on a slider is the real wing position (ghost).</div>
@@ -86,17 +90,20 @@ body.hacked #hack{display:flex;animation:glitch .25s steps(2) infinite}
     <div class="sub" id="potNote"></div><button id="flip">Flip left servo (button)</button></div>
 
   <div class="mode" id="aoaBox"><header>Angle of attack <span id="aoaV">0°</span></header>
-    <div class="sl" style="margin-top:8px"><input type="range" id="aoa" min="0" max="30" value="0"></div></div>
+    <div class="sl" style="margin-top:8px"><input type="range" id="aoa" min="-15" max="15" value="0"></div></div>
 
   <div class="mode act" data-m="1"><header><span>Mode 1: Roll</span><span id="v1">0</span></header><div class="body">
-    <div class="sl"><input type="range" id="roll" min="-100" max="100" value="0"><i class="ghost" id="g1"></i></div></div></div>
+    <div class="sl"><input type="range" id="roll" min="-100" max="100" value="0"><i class="ghost" id="g1"></i></div>
+    <div class="sub" style="margin-top:8px">Left / right wing: blue = commanded, red = real (ghost). Left = TE down, right = TE up.</div>
+    <div class="lr"><span>L</span><div class="bar"><i class="c" id="cL"></i><i class="g" id="gL"></i></div></div>
+    <div class="lr"><span>R</span><div class="bar"><i class="c" id="cR"></i><i class="g" id="gR"></i></div></div></div></div>
 
-  <div class="mode off" data-m="2"><header><span>Mode 2: Vertical morph</span><span id="v2">0%</span></header><div class="body">
-    <div class="pair"><div class="sl v"><input type="range" id="morph" min="0" max="100" value="0"><i class="ghost" id="g2"></i></div></div></div></div>
+  <div class="mode off" data-m="2"><header><span>Mode 2: Vertical morph (top = up, bottom = down)</span><span id="v2">0%</span></header><div class="body">
+    <div class="pair"><div class="sl v"><input type="range" id="morph" min="-100" max="100" value="0"><i class="ghost" id="g2"></i></div></div></div></div>
 
   <div class="mode off" data-m="3"><header><span>Mode 3: Independent</span><span id="v3">-</span></header><div class="body">
-    <div class="pair"><div><div class="sl v"><input type="range" id="sl" min="0" max="100" value="0"><i class="ghost" id="g3l"></i></div>L</div>
-    <div><div class="sl v"><input type="range" id="sr" min="0" max="100" value="0"><i class="ghost" id="g3r"></i></div>R</div></div></div></div>
+    <div class="pair"><div><div class="sl v"><input type="range" id="sl" min="-100" max="100" value="0"><i class="ghost" id="g3l"></i></div>L</div>
+    <div><div class="sl v"><input type="range" id="sr" min="-100" max="100" value="0"><i class="ghost" id="g3r"></i></div>R</div></div></div></div>
 
   <div class="row"><span>Hinge limits (deg)</span>
     <input type="number" id="lmin" value="0" style="width:70px"><input type="number" id="lmax" value="60" style="width:70px"></div>
@@ -108,12 +115,14 @@ body.hacked #hack{display:flex;animation:glitch .25s steps(2) infinite}
 
 <script>
 // ===== Edit these from your CAD =====
-const CFG={minA:0,maxA:60,aoaMin:0,aoaMax:30,
+const CFG={minA:0,maxA:60,aoaMin:-15,aoaMax:15,
   chord:150,      // mm
   thick:13,       // NACA 0013 -> 19.5 mm thick
   pivot:0.30,     // mounting hole at 45 mm / 150 mm
   hinge:0.333,    // 50 mm from leading edge / 150 mm chord
-  maxDefl:25};    // trailing-edge deflection at max servo angle (CHECK)
+  maxDefl:25,     // trailing-edge deflection (deg) at either servo limit (CHECK)
+  neutral:null,   // servo angle where the wing is flat (null = middle of min/max)
+  dir:1};         // set to -1 if a HIGHER servo angle moves the trailing edge UP
 // ====================================
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const S={mode:1,src:'D',smooth:true,hacked:false,disco:false,conn:false,pot:0,inv:false};
@@ -123,37 +132,50 @@ const pct=a=>(a-CFG.minA)/span()*100;
 const send=t=>{if(writer)writer.write(t+"\n").catch(()=>{})};
 const toast=t=>{$('#toast').textContent=t;setTimeout(()=>{if($('#toast').textContent===t)$('#toast').textContent=''},3500)};
 
+const sg=v=>(v>0?'+':'')+v;
+const neutral=()=>CFG.neutral!=null?CFG.neutral:mid();
+// u: -100..+100, +100 = trailing edge fully UP, 0 = flat
+const uToAngle=u=>Math.max(CFG.minA,Math.min(CFG.maxA,neutral()-CFG.dir*u/100*span()/2));
+const angleToU=a=>-(a-neutral())/(span()/2)*100*CFG.dir;
 function target(){
-  const h=span()/2;
-  if(S.mode===1){const r=$('#roll').value/100;return[mid()+r*h,mid()-r*h]}
-  if(S.mode===2){const a=CFG.minA+$('#morph').value/100*span();return[a,a]}
-  return[CFG.minA+$('#sl').value/100*span(),CFG.minA+$('#sr').value/100*span()];
+  if(S.mode===1){const r=+$('#roll').value;return[uToAngle(r),uToAngle(-r)]}
+  if(S.mode===2){const a=uToAngle(+$('#morph').value);return[a,a]}
+  return[uToAngle(+$('#sl').value),uToAngle(+$('#sr').value)];
 }
 
 // NACA 4-digit maths: thickness + hinge deflection, then fit equivalent camber
 const yt=x=>5*CFG.thick/100*(.2969*Math.sqrt(x)-.126*x-.3516*x*x+.2843*x**3-.1015*x**4);
 function deform(x,y,d){const h=CFG.hinge;if(x<=h)return[x,y];const dx=x-h;return[h+dx*Math.cos(d)+y*Math.sin(d),-dx*Math.sin(d)+y*Math.cos(d)]}
-function camberLine(d){return Array.from({length:41},(_,i)=>{const x=i/40;return deform(x,0,d)})}
-function fitNaca(d){
-  const pts=camberLine(d);let best={err:1e9};
-  for(let p=2;p<=8;p++){const pp=p/10;
-    const u=pts.map(([x])=>x<pp?(2*pp*x-x*x)/(pp*pp):((1-2*pp)+2*pp*x-x*x)/((1-pp)**2));
-    const m=pts.reduce((s,q,i)=>s+q[1]*u[i],0)/u.reduce((s,v)=>s+v*v,0);
+// Mean camber line of the morphed shape, measured against the NEW chord line (LE to new TE)
+function analyse(d){
+  const N=80,mc=[];let tmax=0;
+  for(let i=0;i<=N;i++){const x=i/N,t=yt(x),u=deform(x,t,d),l=deform(x,-t,d);
+    mc.push([(u[0]+l[0])/2,(u[1]+l[1])/2]);tmax=Math.max(tmax,Math.hypot(u[0]-l[0],u[1]-l[1]))}
+  const T=mc[N],c=Math.hypot(T[0],T[1]),phi=Math.atan2(T[1],T[0]);
+  const pts=mc.map(([x,y])=>[(x*Math.cos(phi)+y*Math.sin(phi))/c,(-x*Math.sin(phi)+y*Math.cos(phi))/c]);
+  let best={err:1e9,m:0,p:.5};
+  for(let k=10;k<=90;k++){const p=k/100;
+    const u=pts.map(([x])=>x<p?(2*p*x-x*x)/(p*p):((1-2*p)+2*p*x-x*x)/((1-p)**2));
+    const uu=u.reduce((s,v)=>s+v*v,0);if(!uu)continue;
+    const m=pts.reduce((s,q,i)=>s+q[1]*u[i],0)/uu;
     const err=pts.reduce((s,q,i)=>s+(q[1]-m*u[i])**2,0);
-    if(err<best.err)best={err,p,m:-m*100};}
-  return best;
+    if(err<best.err)best={err,m,p}}
+  return{m:best.m*100,p:best.p*100,t:tmax/c*100,phi:phi*180/Math.PI};
 }
 function drawAirfoil(avg,aoa){
-  const d=(avg-CFG.minA)/span()*CFG.maxDefl*Math.PI/180, X=40,SC=400,N=60,up=[],lo=[];
+  const d=-angleToU(avg)/100*CFG.maxDefl*Math.PI/180, X=40,SC=400,N=60,up=[],lo=[];
   for(let i=0;i<=N;i++){const x=(1-Math.cos(i/N*Math.PI))/2;up.push(deform(x,yt(x),d));lo.push(deform(x,-yt(x),d))}
   const P=([x,y])=>`${(X+x*SC).toFixed(1)},${(95-y*SC).toFixed(1)}`;
   $('#af').setAttribute('d','M'+up.map(P).join('L')+'L'+lo.reverse().map(P).join('L')+'Z');
   $('#hingeDot').setAttribute('cx',X+CFG.hinge*SC);$('#hingeDot').setAttribute('cy',95);
   $('#pivotDot').setAttribute('cx',X+CFG.pivot*SC);$('#pivotDot').setAttribute('cy',95);
   $('#afGroup').setAttribute('transform',`rotate(${-aoa} ${X+SC*.25} 95)`);
-  const f=fitNaca(d);
-  $('#naca').textContent=`NACA ${Math.max(0,Math.round(f.m))}${f.p}${String(CFG.thick).padStart(2,'0')}`;
-  $('#defl').textContent=(d*180/Math.PI).toFixed(1)+'°';
+  const a=analyse(d),mm=Math.abs(a.m),tt=String(Math.round(a.t)).padStart(2,'0');
+  $('#naca').textContent=mm<0.05?'NACA 00'+tt:Math.round(mm)>9?'beyond 4-digit range':(a.m<0?'inverted ':'')+'NACA '+Math.round(mm)+Math.round(a.p/10)+tt;
+  $('#camb').textContent=mm<0.05?'0%':`${a.m.toFixed(1)}% @ ${Math.round(a.p)}%c`;
+  $('#thk').textContent=a.t.toFixed(1)+'%';
+  $('#defl').textContent=sg((d*180/Math.PI).toFixed(1))+'° (+ = down)';
+  $('#tilt').textContent=sg((-a.phi).toFixed(1))+'° AoA';
 }
 
 function ledColor(){
@@ -161,10 +183,13 @@ function ledColor(){
   return{1:'#00a0ff',2:'#00ff3c',3:'#dc00b4'}[S.mode];
 }
 function ghosts(){
-  const h=span()/2,roll=(A.l-A.r)/2/h*100;
-  $('#g1').style.left=(roll+100)/2+'%';
-  $('#g2').style.bottom=pct((A.l+A.r)/2)+'%';
-  $('#g3l').style.bottom=pct(A.l)+'%';$('#g3r').style.bottom=pct(A.r)+'%';
+  const pos=u=>(u+100)/2,uL=angleToU(A.l),uR=angleToU(A.r),[tl,tr]=target();
+  $('#g1').style.left=pos((uL-uR)/2)+'%';
+  $('#g2').style.bottom=pos((uL+uR)/2)+'%';
+  $('#g3l').style.bottom=pos(uL)+'%';$('#g3r').style.bottom=pos(uR)+'%';
+  $('#gL').style.left=pos(-uL)+'%';$('#gR').style.left=pos(-uR)+'%';
+  $('#cL').style.left=pos(-angleToU(tl))+'%';$('#cR').style.left=pos(-angleToU(tr))+'%';
+  $('#cL').style.display=$('#cR').style.display=S.src==='A'?'none':'block';
 }
 function render(){
   $('#anaBox').style.display=S.src==='A'?'block':'none';
@@ -174,8 +199,8 @@ function render(){
   $$('.mode[data-m]').forEach(m=>{const on=+m.dataset.m===S.mode;m.classList.toggle('act',on);m.classList.toggle('off',!on)});
   $('#srcD').classList.toggle('on',S.src==='D');$('#srcA').classList.toggle('on',S.src==='A');
   $('#ctrl').classList.toggle('locked',S.src==='A'||S.hacked);
-  $('#v1').textContent=$('#roll').value+'%';$('#v2').textContent=$('#morph').value+'%';
-  $('#v3').textContent=`${$('#sl').value}% / ${$('#sr').value}%`;$('#aoaV').textContent=$('#aoa').value+'°';
+  $('#v1').textContent=sg($('#roll').value)+'%';$('#v2').textContent=sg($('#morph').value)+'%';
+  $('#v3').textContent=`${sg($('#sl').value)}% / ${sg($('#sr').value)}%`;$('#aoaV').textContent=sg($('#aoa').value)+'°';
   $('#lr').textContent=`${Math.round(A.l)}° / ${Math.round(A.r)}°`;
   const c=ledColor();$('#led').style.background=c;$('#led').style.boxShadow=`0 0 12px ${c}`;
   $('#ledTxt').textContent=S.hacked?'ALERT':S.disco?'DISCO':S.src==='A'?'ANALOGUE':['','ROLL','MORPH','INDEP'][S.mode];
