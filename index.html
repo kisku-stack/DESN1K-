@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OPERATION CHAMELEON</title>
+<style>
+:root{--desk:#14181b;--paper:#e6dec5;--paper2:#d8cfb1;--ink:#1d1c19;--blue:#1f3a5f;--stamp:#b3261e;--dim:#8a8266;--led:#00a0ff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--desk);color:var(--ink);font:15px/1.45 "Courier New",Courier,monospace;min-height:100vh;padding:16px}
+body.disco{animation:hue 3s linear infinite}
+@keyframes hue{to{filter:hue-rotate(360deg)}}
+.wrap{max-width:1100px;margin:0 auto;display:grid;gap:14px;grid-template-columns:1.1fr 1fr}
+@media(max-width:850px){.wrap{grid-template-columns:1fr}}
+.sheet{background:var(--paper);padding:16px 18px;box-shadow:0 6px 0 #0007;position:relative}
+.top{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+h1{font-size:22px;margin:0;letter-spacing:.04em;cursor:pointer;user-select:none}
+.sub{color:var(--dim);font-size:13px}
+.stamp{position:absolute;right:16px;top:12px;border:3px solid var(--stamp);color:var(--stamp);padding:2px 10px;transform:rotate(-6deg);font-weight:bold;opacity:.85}
+.top .stamp{position:static}
+h2{font-size:15px;margin:0 0 10px;border-bottom:2px solid var(--ink);padding-bottom:4px}
+button,input[type=number]{font:inherit;color:var(--ink);background:var(--paper2);border:2px solid var(--ink);padding:5px 10px;cursor:pointer}
+button.on{background:var(--ink);color:var(--paper)}
+button:focus-visible,input:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+.seg{display:inline-flex}.seg button+button{border-left:0}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:8px 0}
+svg{width:100%;height:auto;display:block}
+.read{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
+.read div{background:var(--paper2);padding:6px 8px}.read b{display:block;font-size:19px;color:var(--blue)}
+.mode{border:2px solid var(--ink);padding:10px;margin-bottom:10px;transition:opacity .25s,filter .25s}
+.mode.off{opacity:.28;filter:grayscale(1);pointer-events:none}
+.mode.act{background:#f3ecd2;border-color:var(--blue);box-shadow:inset 5px 0 0 var(--blue)}
+.mode header{display:flex;justify-content:space-between;cursor:pointer;font-weight:bold}
+.mode .body{display:none;margin-top:8px}.mode.act .body{display:block}
+.sl{position:relative}
+.sl input{width:100%;accent-color:var(--blue);margin:0}
+.sl.v{height:150px;width:46px}
+.sl.v input{writing-mode:vertical-lr;direction:rtl;height:100%;width:100%}
+.ghost{position:absolute;pointer-events:none;background:var(--stamp);opacity:.75}
+.sl:not(.v) .ghost{top:-3px;bottom:-3px;width:4px;margin-left:-2px}
+.sl.v .ghost{left:-3px;right:-3px;height:4px;margin-bottom:-2px}
+.pair{display:flex;gap:40px;justify-content:center}
+.pair div{text-align:center}
+.led{display:inline-block;width:14px;height:14px;border-radius:50%;background:var(--led);box-shadow:0 0 10px var(--led);vertical-align:-2px;border:2px solid var(--ink)}
+.locked .mode,.locked #aoaBox{opacity:.28;filter:grayscale(1);pointer-events:none}
+#hackBtn{position:fixed;right:8px;bottom:8px;width:26px;height:26px;padding:0;opacity:.25;background:none;border:1px solid var(--dim);color:var(--dim);font-size:12px}
+#hackBtn:hover{opacity:1}
+#hack{display:none;position:fixed;inset:0;background:#2a0006ee;color:#ff4a5e;z-index:9;align-items:center;justify-content:center;text-align:center;flex-direction:column;gap:14px;padding:20px}
+body.hacked #hack{display:flex;animation:glitch .25s steps(2) infinite}
+#hack h2{font-size:clamp(22px,5vw,44px);border:0;margin:0;color:#ff4a5e}
+#hack button{background:none;color:#ff4a5e;border-color:#ff4a5e}
+@keyframes glitch{0%{transform:translate(0)}50%{transform:translate(-3px,2px);text-shadow:3px 0 #0ff,-3px 0 #f0f}100%{transform:translate(2px,-1px)}}
+.toast{color:var(--stamp);font-weight:bold;min-height:1.4em}
+@media(prefers-reduced-motion:reduce){*{animation:none!important}}
+</style></head><body>
+<div class="wrap" id="app">
+
+<div class="sheet top">
+  <div><h1 id="logo">OPERATION CHAMELEON</h1><div class="sub">Adaptive airfoil control. Prepared for authorised buyers only.</div></div>
+  <div class="stamp">EYES ONLY</div>
+  <div class="row" style="margin:0">
+    <span class="led" id="led" title="Stand LED"></span><span id="ledTxt">LED</span>
+    <button id="connect">Connect Arduino</button>
+  </div>
+</div>
+
+<div class="sheet">
+  <h2>Exhibit A: Live wing profile</h2>
+  <svg viewBox="0 0 480 190" aria-label="Wing profile"><line x1="20" y1="95" x2="460" y2="95" stroke="#8a8266" stroke-dasharray="4 4"/>
+    <g id="afGroup"><path id="af" fill="#1f3a5f" fill-opacity=".85" stroke="#1d1c19" stroke-width="2"/><circle id="hingeDot" r="4" fill="#e6dec5" stroke="#1d1c19"/></g></svg>
+  <div class="read">
+    <div>Equivalent<b id="naca">-</b></div><div>TE deflection<b id="defl">-</b></div><div>Servo L / R<b id="lr">-</b></div>
+  </div>
+  <svg viewBox="0 0 480 90" aria-label="Front view"><g id="front" transform="translate(240 45)"><line id="fl" x1="0" y1="0" x2="-200" y2="0" stroke="#1d1c19" stroke-width="10"/><line id="fr" x1="0" y1="0" x2="200" y2="0" stroke="#1d1c19" stroke-width="10"/><circle r="9" fill="#b3261e"/></g></svg>
+  <div class="sub">Roll view. Red marker on a slider is the real wing position (ghost).</div>
+</div>
+
+<div class="sheet" id="ctrl">
+  <h2>Exhibit B: Controls</h2>
+  <div class="row"><span>Source</span>
+    <span class="seg"><button id="srcD" class="on">Digital</button><button id="srcA">Analogue</button></span>
+    <label><input type="checkbox" id="sm" checked> Smoothing</label></div>
+  <div class="toast" id="toast"></div>
+
+  <div class="mode" id="aoaBox"><header>Angle of attack <span id="aoaV">0°</span></header>
+    <div class="sl" style="margin-top:8px"><input type="range" id="aoa" min="0" max="30" value="0"></div></div>
+
+  <div class="mode act" data-m="1"><header><span>Mode 1: Roll</span><span id="v1">0</span></header><div class="body">
+    <div class="sl"><input type="range" id="roll" min="-100" max="100" value="0"><i class="ghost" id="g1"></i></div></div></div>
+
+  <div class="mode off" data-m="2"><header><span>Mode 2: Vertical morph</span><span id="v2">0%</span></header><div class="body">
+    <div class="pair"><div class="sl v"><input type="range" id="morph" min="0" max="100" value="0"><i class="ghost" id="g2"></i></div></div></div></div>
+
+  <div class="mode off" data-m="3"><header><span>Mode 3: Independent</span><span id="v3">-</span></header><div class="body">
+    <div class="pair"><div><div class="sl v"><input type="range" id="sl" min="0" max="100" value="0"><i class="ghost" id="g3l"></i></div>L</div>
+    <div><div class="sl v"><input type="range" id="sr" min="0" max="100" value="0"><i class="ghost" id="g3r"></i></div>R</div></div></div></div>
+
+  <div class="row"><span>Hinge limits (deg)</span>
+    <input type="number" id="lmin" value="0" style="width:70px"><input type="number" id="lmax" value="60" style="width:70px"></div>
+</div>
+</div>
+
+<button id="hackBtn" title="Compromise">!</button>
+<div id="hack"><h2>CONTROL LINK COMPROMISED</h2><div>Digital channel locked by unknown party.<br>Fall back to analogue controls.</div><button id="restore">Restore link</button></div>
+
+<script>
+// ===== Edit these from your CAD =====
+const CFG={minA:0,maxA:60,aoaMin:0,aoaMax:30,thick:12,hinge:0.6,maxDefl:25};
+// ====================================
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const S={mode:1,src:'D',smooth:true,hacked:false,disco:false,conn:false};
+const A={l:0,r:0}; let port,writer,logoClicks=0;
+const mid=()=>(CFG.minA+CFG.maxA)/2, span=()=>CFG.maxA-CFG.minA;
+const pct=a=>(a-CFG.minA)/span()*100;
+const send=t=>{if(writer)writer.write(t+"\n").catch(()=>{})};
+const toast=t=>{$('#toast').textContent=t;setTimeout(()=>{if($('#toast').textContent===t)$('#toast').textContent=''},3500)};
+
+function target(){
+  const h=span()/2;
+  if(S.mode===1){const r=$('#roll').value/100;return[mid()+r*h,mid()-r*h]}
+  if(S.mode===2){const a=CFG.minA+$('#morph').value/100*span();return[a,a]}
+  return[CFG.minA+$('#sl').value/100*span(),CFG.minA+$('#sr').value/100*span()];
+}
+
+// NACA 4-digit maths: thickness + hinge deflection, then fit equivalent camber
+const yt=x=>5*CFG.thick/100*(.2969*Math.sqrt(x)-.126*x-.3516*x*x+.2843*x**3-.1015*x**4);
+function deform(x,y,d){const h=CFG.hinge;if(x<=h)return[x,y];const dx=x-h;return[h+dx*Math.cos(d)+y*Math.sin(d),-dx*Math.sin(d)+y*Math.cos(d)]}
+function camberLine(d){return Array.from({length:41},(_,i)=>{const x=i/40;return deform(x,0,d)})}
+function fitNaca(d){
+  const pts=camberLine(d);let best={err:1e9};
+  for(let p=2;p<=8;p++){const pp=p/10;
+    const u=pts.map(([x])=>x<pp?(2*pp*x-x*x)/(pp*pp):((1-2*pp)+2*pp*x-x*x)/((1-pp)**2));
+    const m=pts.reduce((s,q,i)=>s+q[1]*u[i],0)/u.reduce((s,v)=>s+v*v,0);
+    const err=pts.reduce((s,q,i)=>s+(q[1]-m*u[i])**2,0);
+    if(err<best.err)best={err,p,m:-m*100};}
+  return best;
+}
+function drawAirfoil(avg,aoa){
+  const d=(avg-CFG.minA)/span()*CFG.maxDefl*Math.PI/180, X=40,SC=400,N=60,up=[],lo=[];
+  for(let i=0;i<=N;i++){const x=(1-Math.cos(i/N*Math.PI))/2;up.push(deform(x,yt(x),d));lo.push(deform(x,-yt(x),d))}
+  const P=([x,y])=>`${(X+x*SC).toFixed(1)},${(95-y*SC).toFixed(1)}`;
+  $('#af').setAttribute('d','M'+up.map(P).join('L')+'L'+lo.reverse().map(P).join('L')+'Z');
+  $('#hingeDot').setAttribute('cx',X+CFG.hinge*SC);$('#hingeDot').setAttribute('cy',95);
+  $('#afGroup').setAttribute('transform',`rotate(${-aoa} ${X+SC*.25} 95)`);
+  const f=fitNaca(d);
+  $('#naca').textContent=`NACA ${Math.max(0,Math.round(f.m))}${f.p}${String(CFG.thick).padStart(2,'0')}`;
+  $('#defl').textContent=(d*180/Math.PI).toFixed(1)+'°';
+}
+
+function ledColor(){
+  if(S.hacked)return'#ff0000';if(S.disco)return'#ff00ff';if(S.src==='A')return'#ff6e00';
+  return{1:'#00a0ff',2:'#00ff3c',3:'#dc00b4'}[S.mode];
+}
+function ghosts(){
+  const h=span()/2,roll=(A.l-A.r)/2/h*100;
+  $('#g1').style.left=(roll+100)/2+'%';
+  $('#g2').style.bottom=pct((A.l+A.r)/2)+'%';
+  $('#g3l').style.bottom=pct(A.l)+'%';$('#g3r').style.bottom=pct(A.r)+'%';
+}
+function render(){
+  $$('.mode[data-m]').forEach(m=>{const on=+m.dataset.m===S.mode;m.classList.toggle('act',on);m.classList.toggle('off',!on)});
+  $('#srcD').classList.toggle('on',S.src==='D');$('#srcA').classList.toggle('on',S.src==='A');
+  $('#ctrl').classList.toggle('locked',S.src==='A'||S.hacked);
+  $('#v1').textContent=$('#roll').value+'%';$('#v2').textContent=$('#morph').value+'%';
+  $('#v3').textContent=`${$('#sl').value}% / ${$('#sr').value}%`;$('#aoaV').textContent=$('#aoa').value+'°';
+  $('#lr').textContent=`${Math.round(A.l)}° / ${Math.round(A.r)}°`;
+  const c=ledColor();$('#led').style.background=c;$('#led').style.boxShadow=`0 0 12px ${c}`;
+  $('#ledTxt').textContent=S.hacked?'ALERT':S.disco?'DISCO':S.src==='A'?'ANALOGUE':['','ROLL','MORPH','INDEP'][S.mode];
+  drawAirfoil((A.l+A.r)/2,+$('#aoa').value);
+  const tilt=(A.l-A.r)/span()*30;
+  $('#fl').setAttribute('y2',-tilt*0.9);$('#fr').setAttribute('y2',tilt*0.9);
+  ghosts();
+}
+
+function setSrc(s,quiet){
+  S.src=s;send('SRC,'+(s==='A'?1:0));
+  if(!quiet)toast(s==='A'?'Analogue channel active':'Digital channel active');render();
+}
+function setMode(m){if(S.src==='A'||S.hacked)return;S.mode=m;send('M,'+m);render()}
+function pushLimits(){CFG.minA=+$('#lmin').value;CFG.maxA=+$('#lmax').value;send(`LIM,${CFG.minA},${CFG.maxA}`)}
+function setDisco(on){S.disco=on;document.body.classList.toggle('disco',on);send('DISCO,'+(on?1:0));toast(on?'Show mode enabled':'');}
+
+// ---- wiring up UI ----
+$$('.mode[data-m] header').forEach(h=>h.onclick=()=>setMode(+h.parentElement.dataset.m));
+$$('input[type=range]').forEach(i=>i.oninput=()=>{if(i.id==='aoa')send('AOA,'+i.value);render()});
+$('#srcD').onclick=()=>{if(!S.hacked)setSrc('D')};$('#srcA').onclick=()=>setSrc('A');
+$('#sm').onchange=e=>{S.smooth=e.target.checked;send('SM,'+(S.smooth?1:0))};
+$('#lmin').onchange=$('#lmax').onchange=pushLimits;
+$('#logo').onclick=()=>{if(++logoClicks>=5){logoClicks=0;setDisco(!S.disco)}};
+$('#hackBtn').onclick=()=>{S.hacked=true;document.body.classList.add('hacked');send('ALERT,1');setSrc('A',true);render()};
+$('#restore').onclick=()=>{S.hacked=false;document.body.classList.remove('hacked');send('ALERT,0');setSrc('D');};
+
+// ---- Web Serial ----
+$('#connect').onclick=async()=>{
+  if(!('serial' in navigator)){toast('Use Chrome or Edge for USB link');return}
+  try{
+    port=await navigator.serial.requestPort();await port.open({baudRate:115200});
+    writer=port.writable.getWriter();S.conn=true;$('#connect').textContent='Link established';
+    const enc=new TextEncoder();const w=writer;writer={write:t=>w.write(enc.encode(t))};
+    setTimeout(()=>{pushLimits();send('M,'+S.mode);send('SM,'+(S.smooth?1:0))},1800); // Uno resets on connect
+    const rd=port.readable.pipeThrough(new TextDecoderStream()).getReader();let buf='';
+    for(;;){const{value,done}=await rd.read();if(done)break;buf+=value;let i;
+      while((i=buf.indexOf('\n'))>=0){telemetry(buf.slice(0,i).trim());buf=buf.slice(i+1)}}
+  }catch(e){toast('Link failed: '+e.message)}
+  S.conn=false;$('#connect').textContent='Connect Arduino';
+};
+function telemetry(l){
+  const p=l.split(',');if(p[0]!=='T'||p.length<7)return;
+  A.l=+p[2];A.r=+p[3];
+  const an=+p[4]?'A':'D';
+  if(an!==S.src&&!S.hacked){S.src=an;toast(an==='A'?'Analogue override detected':'');}
+  const d=!!+p[6];if(d!==S.disco){S.disco=d;document.body.classList.toggle('disco',d)}
+  render();
+}
+
+// ---- main loop: send targets / simulate when unplugged ----
+let t0=performance.now();
+setInterval(()=>{
+  const t=(performance.now()-t0)/1000;let[tl,tr]=target();
+  if(S.disco){const s=Math.sin(t*2.5);tl=mid()+s*span()/2;tr=mid()-s*span()/2}
+  if(S.conn){if(S.src==='D'&&!S.hacked&&!S.disco)send(`D,${Math.round(tl)},${Math.round(tr)}`)}
+  else{ // simulation
+    const st=S.smooth&&!S.disco?1:6;
+    A.l+=Math.max(-st,Math.min(st,tl-A.l));A.r+=Math.max(-st,Math.min(st,tr-A.r));render();
+  }
+},40);
+render();
+</script></body></html>

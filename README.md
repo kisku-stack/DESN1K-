@@ -22,7 +22,7 @@ Set `COMMON_ANODE` in the sketch if your LED is common-anode. Power the three se
 
 ## Tune before testing
 1. **Hinge limits**: `minA`/`maxA` in the `.ino`, and the Limits boxes in the UI. Start narrow and widen slowly.
-2. **Airfoil geometry**: the `CFG` block at the top of the script in `index.html` (thickness, hinge position, deflection at max servo angle, AoA range). Measure these from the CAD.
+2. **Airfoil geometry**: the `CFG` block at the top of the script in `index.html` (thickness, hinge position, deflection at max servo angle, AoA range). Measure these from the CAD.a
 
 ## Behaviour
 - Pot moved or button pressed -> **analogue** takes over. Clicking Digital in the UI hands control back.
