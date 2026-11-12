@@ -27,6 +27,7 @@ svg{width:100%;height:auto;display:block}
 .read div{background:var(--paper2);padding:6px 8px}.read b{display:block;font-size:19px;color:var(--blue)}
 .mode{border:2px solid var(--ink);padding:10px;margin-bottom:10px;transition:opacity .25s,filter .25s}
 .mode.off{opacity:.28;filter:grayscale(1);pointer-events:none}
+.mode.off header{pointer-events:auto}
 .mode.act{background:#f3ecd2;border-color:var(--blue);box-shadow:inset 5px 0 0 var(--blue)}
 .mode header{display:flex;justify-content:space-between;cursor:pointer;font-weight:bold}
 .mode .body{display:none;margin-top:8px}.mode.act .body{display:block}
@@ -63,11 +64,11 @@ body.hacked #hack{display:flex;animation:glitch .25s steps(2) infinite}
 </div>
 
 <div class="sheet">
-  <h2>Exhibit A: Live wing profile</h2>
+  <h2>Exhibit A: Live wing profile (150 mm chord)</h2>
   <svg viewBox="0 0 480 190" aria-label="Wing profile"><line x1="20" y1="95" x2="460" y2="95" stroke="#8a8266" stroke-dasharray="4 4"/>
-    <g id="afGroup"><path id="af" fill="#1f3a5f" fill-opacity=".85" stroke="#1d1c19" stroke-width="2"/><circle id="hingeDot" r="4" fill="#e6dec5" stroke="#1d1c19"/></g></svg>
+    <g id="afGroup"><path id="af" fill="#1f3a5f" fill-opacity=".85" stroke="#1d1c19" stroke-width="2"/><circle id="pivotDot" r="4" fill="none" stroke="#e6dec5" stroke-width="2"/><circle id="hingeDot" r="4" fill="#e6dec5" stroke="#1d1c19"/></g></svg>
   <div class="read">
-    <div>Equivalent<b id="naca">-</b></div><div>TE deflection<b id="defl">-</b></div><div>Servo L / R<b id="lr">-</b></div>
+    <div>Morphed shape<b id="naca">-</b></div><div>TE deflection<b id="defl">-</b></div><div>Servo L / R<b id="lr">-</b></div>
   </div>
   <svg viewBox="0 0 480 90" aria-label="Front view"><g id="front" transform="translate(240 45)"><line id="fl" x1="0" y1="0" x2="-200" y2="0" stroke="#1d1c19" stroke-width="10"/><line id="fr" x1="0" y1="0" x2="200" y2="0" stroke="#1d1c19" stroke-width="10"/><circle r="9" fill="#b3261e"/></g></svg>
   <div class="sub">Roll view. Red marker on a slider is the real wing position (ghost).</div>
@@ -103,7 +104,12 @@ body.hacked #hack{display:flex;animation:glitch .25s steps(2) infinite}
 
 <script>
 // ===== Edit these from your CAD =====
-const CFG={minA:0,maxA:60,aoaMin:0,aoaMax:30,thick:12,hinge:0.6,maxDefl:25};
+const CFG={minA:0,maxA:60,aoaMin:0,aoaMax:30,
+  chord:150,      // mm
+  thick:13,       // NACA 0013 -> 19.5 mm thick
+  pivot:0.30,     // mounting hole at 45 mm / 150 mm
+  hinge:0.333,    // 50 mm from leading edge / 150 mm chord
+  maxDefl:25};    // trailing-edge deflection at max servo angle (CHECK)
 // ====================================
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const S={mode:1,src:'D',smooth:true,hacked:false,disco:false,conn:false};
@@ -139,6 +145,7 @@ function drawAirfoil(avg,aoa){
   const P=([x,y])=>`${(X+x*SC).toFixed(1)},${(95-y*SC).toFixed(1)}`;
   $('#af').setAttribute('d','M'+up.map(P).join('L')+'L'+lo.reverse().map(P).join('L')+'Z');
   $('#hingeDot').setAttribute('cx',X+CFG.hinge*SC);$('#hingeDot').setAttribute('cy',95);
+  $('#pivotDot').setAttribute('cx',X+CFG.pivot*SC);$('#pivotDot').setAttribute('cy',95);
   $('#afGroup').setAttribute('transform',`rotate(${-aoa} ${X+SC*.25} 95)`);
   const f=fitNaca(d);
   $('#naca').textContent=`NACA ${Math.max(0,Math.round(f.m))}${f.p}${String(CFG.thick).padStart(2,'0')}`;
