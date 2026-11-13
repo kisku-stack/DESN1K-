@@ -122,7 +122,7 @@ body.hacked #hack{display:flex;animation:glitch .25s steps(2) infinite}
     <canvas id="flowCv" width="720" height="320" style="width:100%;display:block;background:#0e161e"></canvas>
     <div id="flowLoad"><div>Wing changed, updating simulation…<div class="lbar"><i id="lbarI"></i></div></div></div>
   </div>
-  <div class="sub">Air flows left to right past the current wing shape and angle of attack (left and right servos averaged). When the wing morphs, the simulation waits about 1 s for it to settle, then restarts. Qualitative only: 2D, low Reynolds number (the sim cannot reach your tunnel's real Re, so tunnel speed changes the flow speed shown but not the Re), and Cl/Cd are rough indicators, not results to quote.</div>
+  <div class="sub">Air flows left to right past the current wing shape and angle of attack (left and right servos averaged). Speed and vorticity show the flow field as colour. Wind view shows moving tracer particles carried by the simulated air (blue = slow, white = free stream, yellow = accelerated), so you can see where the wind is deflected. When the wing morphs, the simulation waits about 1 s for it to settle, then restarts; changing tunnel speed just adjusts the flow smoothly. In speed and vorticity view the pale moving bands are smoke pulses carried by the air. Qualitative only: 2D, low Reynolds number (the sim cannot reach your tunnel's real Re, so tunnel speed changes the flow speed shown but not the Re), and Cl/Cd are rough indicators, not results to quote.</div>
 </div>
 </div>
 
@@ -233,7 +233,11 @@ function setSrc(s,quiet){
   if(!quiet)toast(s==='A'?'Analogue channel active':'Digital channel active');render();
 }
 function setMode(m){if(S.src==='A'||S.hacked)return;S.mode=m;send('M,'+m);render()}
-function pushLimits(){CFG.minA=+$('#lmin').value;CFG.maxA=+$('#lmax').value;send(`LIM,${CFG.minA},${CFG.maxA}`)}
+function pushLimits(){
+  const a=+$('#lmin').value,b=+$('#lmax').value;
+  if(!isFinite(a)||!isFinite(b)||a<0||b>180||b-a<5){
+    $('#lmin').value=CFG.minA;$('#lmax').value=CFG.maxA;toast('Limits must be 0-180 deg with max at least 5 deg above min');return}
+  CFG.minA=a;CFG.maxA=b;send(`LIM,${CFG.minA},${CFG.maxA}`)}
 function setDisco(on){S.disco=on;document.body.classList.toggle('disco',on);send('DISCO,'+(on?1:0));toast(on?'Show mode enabled':'');}
 
 // ---- wiring up UI ----
@@ -252,7 +256,7 @@ $('#connect').onclick=async()=>{
   if(!('serial' in navigator)){toast('Use Chrome or Edge for USB link');return}
   try{
     port=await navigator.serial.requestPort();await port.open({baudRate:115200});
-    writer=port.writable.getWriter();S.conn=true;$('#connect').textContent='Link established';
+    writer=port.writable.getWriter();S.conn=true;lastAn='D';$('#connect').textContent='Link established';
     const enc=new TextEncoder();const w=writer;writer={write:t=>w.write(enc.encode(t))};
     setTimeout(()=>{pushLimits();send('M,'+S.mode);send('SM,'+(S.smooth?1:0))},1800); // Uno resets on connect
     const rd=port.readable.pipeThrough(new TextDecoderStream()).getReader();let buf='';
@@ -293,7 +297,12 @@ const Fl=(()=>{
   const w=[4/9,1/9,1/9,1/9,1/9,1/36,1/36,1/36,1/36];
   let f=new Float32Array(9*N),g=new Float32Array(9*N);
   const solid=new Uint8Array(N),ux=new Float32Array(N),uy=new Float32Array(N),fi=new Float32Array(9);
-  let ms=15,u0=.1,on=false,vort=false,cl=0,cd=0,ramp=0,sig='',seen=null,seenAt=0,curP=null,img,ctx,off,octx;
+  const PN=700,PL=16,ADV=12;
+  const ppx=new Float32Array(PN),ppy=new Float32Array(PN),age=new Uint16Array(PN),life=new Uint16Array(PN),hx=new Float32Array(PN*PL),hy=new Float32Array(PN*PL);
+  const sp=new Float32Array(PN);
+  let dye=new Float32Array(N),dye2=new Float32Array(N),dfr=0;
+  let hd=0,vx=0,vy=0;
+  let ms=15,u0=.1,uc=.1,on=false,view='speed',cl=0,cd=0,ramp=0,sig='',seen=null,seenAt=0,curP=null,img,ctx,off,octx;
   const eq=(k,r,u,v)=>{const e=ex[k]*u+ey[k]*v;return w[k]*r*(1+3*e+4.5*e*e-1.5*(u*u+v*v))};
   const rr=()=>ramp*ramp*(3-2*ramp);               // smooth 0..1 inlet ramp
   function wing(){const d=-angleToU((A.l+A.r)/2)/100*CFG.maxDefl*Math.PI/180,aoa=+$('#aoa').value;
@@ -314,13 +323,54 @@ const Fl=(()=>{
       for(let i=Math.max(1,Math.floor(x0)-1);i<=Math.min(NX-2,Math.ceil(x1)+1);i++)
         if(inside(P,i+.5,j+.5))solid[j*NX+i]=1;
   }
+  function place(p,anywhere){
+    ppx[p]=anywhere?Math.random()*NX:.5+Math.random()*3;ppy[p]=1+Math.random()*(NY-2);
+    age[p]=0;life[p]=250+Math.random()*350;
+    for(let k=0;k<PL;k++){hx[p*PL+k]=ppx[p];hy[p*PL+k]=ppy[p]}}
+  function initParticles(){for(let p=0;p<PN;p++)place(p,true);hd=0}
+  function sample(x,y){
+    const fx=Math.max(0,Math.min(NX-1.001,x-.5)),fy=Math.max(0,Math.min(NY-1.001,y-.5)),i=fx|0,j=fy|0,a=fx-i,b=fy-j,n=j*NX+i;
+    vx=(ux[n]*(1-a)+ux[n+1]*a)*(1-b)+(ux[n+NX]*(1-a)+ux[n+NX+1]*a)*b;
+    vy=(uy[n]*(1-a)+uy[n+1]*a)*(1-b)+(uy[n+NX]*(1-a)+uy[n+NX+1]*a)*b}
+  function moveParticles(){
+    hd=(hd+1)%PL;
+    for(let p=0;p<PN;p++){
+      sample(ppx[p],ppy[p]);sp[p]=Math.hypot(vx,vy)/Math.max(uc,.02);ppx[p]+=vx*ADV;ppy[p]+=vy*ADV;age[p]++;
+      if(ppx[p]<0||ppx[p]>=NX||ppy[p]<1||ppy[p]>=NY-1||age[p]>life[p]||solid[(ppy[p]|0)*NX+(ppx[p]|0)])place(p,false);
+      hx[p*PL+hd]=ppx[p];hy[p*PL+hd]=ppy[p];
+    }
+  }
+  function drawTrails(){
+    const cols=['rgba(90,170,225,.85)','rgba(244,239,224,.85)','rgba(247,200,90,.95)'];
+    ctx.lineWidth=1.6;ctx.lineCap='round';ctx.lineJoin='round';
+    for(let c=0;c<3;c++){
+      ctx.beginPath();
+      for(let p=0;p<PN;p++){
+        const b=sp[p]<.75?0:sp[p]<1.15?1:2;if(b!==c)continue;const o=p*PL;
+        for(let k=0;k<PL;k++){const idx=o+(hd+1+k)%PL,X=hx[idx]*SC,Y=hy[idx]*SC;k?ctx.lineTo(X,Y):ctx.moveTo(X,Y)}}
+      ctx.strokeStyle=cols[c];ctx.stroke();
+    }
+  }
+  function advectDye(){
+    dfr++;const inj=(dfr%44)<14?1:0;                    // a smoke pulse enters from the left every ~44 frames
+    for(let j=0;j<NY;j++)for(let i=0;i<NX;i++){
+      const n=j*NX+i;
+      if(solid[n]){dye2[n]=0;continue}
+      if(i===0){dye2[n]=inj;continue}
+      let fx=i-ux[n]*ADV,fy=j-uy[n]*ADV;
+      fx=fx<0?0:fx>NX-1.001?NX-1.001:fx;fy=fy<0?0:fy>NY-1.001?NY-1.001:fy;
+      const i0=fx|0,j0=fy|0,a=fx-i0,b=fy-j0,m=j0*NX+i0;
+      dye2[n]=(dye[m]*(1-a)+dye[m+1]*a)*(1-b)+(dye[m+NX]*(1-a)+dye[m+NX+1]*a)*b;
+    }
+    const t=dye;dye=dye2;dye2=t;
+  }
   // air at rest, wing already in place, inlet ramps up from the left
   function restart(wg){
     for(let k=0;k<9;k++){f.fill(w[k],k*N,(k+1)*N);g.fill(w[k],k*N,(k+1)*N)}
-    ux.fill(0);uy.fill(0);cl=cd=0;ramp=0;setMask(wg);sig=wg.s;seen=null;
+    ux.fill(0);uy.fill(0);cl=cd=0;ramp=0;setMask(wg);sig=wg.s;seen=null;initParticles();uc=u0;dye.fill(0);dfr=0;
   }
   function step(){
-    let Fx=0,Fy=0;const ui=u0*rr();
+    let Fx=0,Fy=0;uc+=(u0-uc)*.01;const ui=uc*rr();
     for(let j=0;j<NY;j++)for(let i=0;i<NX;i++){
       const n=j*NX+i;
       if(solid[n]){ux[n]=uy[n]=0;for(let k=0;k<9;k++)g[k*N+n]=w[k];continue}
@@ -337,7 +387,7 @@ const Fl=(()=>{
     }
     const t=f;f=g;g=t;
     if(ramp<1)ramp=Math.min(1,ramp+.004);           // ~250 steps to full speed
-    else{const q=.5*u0*u0*C;cl+=.02*(-Fy/q-cl);cd+=.02*(Fx/q-cd)}
+    else{const q=.5*uc*uc*C;cl+=.02*(-Fy/q-cl);cd+=.02*(Fx/q-cd)}
     if(!isFinite(cl)||!isFinite(cd))restart(wing());
   }
   const cl01=x=>Math.max(0,Math.min(1,x)),mix=(a,b,t)=>a+(b-a)*t;
@@ -345,16 +395,17 @@ const Fl=(()=>{
     const px=img.data;
     for(let n=0;n<N;n++){let r,gg,b;const o=n*4;
       if(solid[n]){r=230;gg=222;b=197}
-      else if(!vort){const t=cl01(Math.hypot(ux[n],uy[n])/u0/1.6);
+      else if(view!=='vorticity'){const t=cl01(Math.hypot(ux[n],uy[n])/Math.max(uc,.02)/1.6);
         if(t<.5){const s=t*2;r=mix(12,31,s);gg=mix(26,111,s);b=mix(40,139,s)}else{const s=(t-.5)*2;r=mix(31,247,s);gg=mix(111,200,s);b=mix(139,90,s)}}
       else{const x=n%NX,y=(n/NX)|0;let c=0;
-        if(x>0&&x<NX-1&&y>0&&y<NY-1)c=((uy[n+1]-uy[n-1])-(ux[n+NX]-ux[n-NX]))/(u0*.5);
+        if(x>0&&x<NX-1&&y>0&&y<NY-1)c=((uy[n+1]-uy[n-1])-(ux[n+NX]-ux[n-NX]))/(Math.max(uc,.02)*.5);
         c=Math.max(-1,Math.min(1,c));const m=Math.abs(c),T=c>0?[230,70,60]:[60,170,220];
         r=mix(14,T[0],m);gg=mix(22,T[1],m);b=mix(30,T[2],m)}
-      px[o]=r;px[o+1]=gg;px[o+2]=b}
+      const kk=view==='wind'?.4:1,dd=view==='wind'?0:dye[n]*80;px[o]=r*kk+dd;px[o+1]=gg*kk+dd;px[o+2]=b*kk+dd}
     octx.putImageData(img,0,0);
     ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
     ctx.drawImage(off,0,0,NX*SC,NY*SC);
+    if(view==='wind')drawTrails();
     if(curP){ctx.beginPath();curP.forEach(([x,y],i)=>i?ctx.lineTo(x*SC,y*SC):ctx.moveTo(x*SC,y*SC));
       ctx.closePath();ctx.fillStyle='#e6dec5';ctx.fill();ctx.lineWidth=2;ctx.strokeStyle='#1d1c19';ctx.stroke()}
   }
@@ -367,10 +418,10 @@ const Fl=(()=>{
       if(p>=1)restart(wg);else{wait=true;$('#lbarI').style.width=(p*100)+'%'}
     }else seen=null;
     $('#flowLoad').classList.toggle('show',wait);
-    if(!wait){for(let s=0;s<3;s++)step();draw()}
-    const settled=ramp>=1;
+    if(!wait){for(let s=0;s<3;s++)step();if(view==='wind')moveParticles();else advectDye();draw()}
+    const settled=ramp>=1&&ms>=8&&Math.abs(uc-u0)<.003;
     $('#flowRead').textContent=`Real Re ≈ ${Math.round(ms*CFG.chord/1000/1.5e-5).toLocaleString()} (${ms} m/s, ${CFG.chord} mm chord) | sim Re ≈ ${Math.round(u0*C/NU)} | `+
-      (settled?`Cl ${cl.toFixed(2)} | Cd ${cd.toFixed(2)} | L/D ${Math.abs(cd)>.005?(cl/cd).toFixed(1):'-'}`:'flow starting up…');
+      (settled?`Cl ${cl.toFixed(2)} | Cd ${cd.toFixed(2)} | L/D ${Math.abs(cd)>.005?(cl/cd).toFixed(1):'-'}`:(ramp<1?'flow starting up…':ms<8&&Math.abs(uc-u0)<.003?'Cl/Cd not meaningful below 8 m/s':'adjusting to new speed…'));
     requestAnimationFrame(loop);
   }
   const cv=$('#flowCv');
@@ -379,7 +430,7 @@ const Fl=(()=>{
     octx=off.getContext('2d');img=octx.createImageData(NX,NY);for(let n=3;n<img.data.length;n+=4)img.data[n]=255;
     $('#flowBtn').onclick=()=>{on=!on;$('#flowBtn').textContent=on?'Stop simulation':'Run simulation';$('#flowBtn').classList.toggle('on',on);
       if(on){restart(wing());requestAnimationFrame(loop)}else $('#flowLoad').classList.remove('show')};
-    $('#flowMode').onclick=()=>{vort=!vort;$('#flowMode').textContent='Showing: '+(vort?'vorticity':'speed')};
+    $('#flowMode').onclick=()=>{view=view==='speed'?'vorticity':view==='vorticity'?'wind':'speed';$('#flowMode').textContent='Showing: '+view;dye.fill(0);dfr=0;if(view==='wind')initParticles()};
     const setMS=v=>{const mx=25;ms=Math.max(0,Math.min(mx,+v||0));$('#flowU').value=ms;$('#flowV').value=ms;u0=Math.max(.02,.12*ms/mx)};
     $('#flowU').oninput=e=>setMS(e.target.value);$('#flowV').onchange=e=>setMS(e.target.value);
     setMS(15);
