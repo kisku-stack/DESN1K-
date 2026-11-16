@@ -91,14 +91,16 @@ body.hacked #hack{display:flex;animation:glitch .25s steps(2) infinite}
   <div class="toast" id="toast"></div>
   <div class="ana" id="anaBox" style="display:none"><b>Analogue channel active</b> <span id="potV">0</span>/1023
     <div class="sl" style="margin:8px 0"><input type="range" id="pot" min="0" max="1023" value="512"></div>
-    <div class="sub" id="potNote"></div><button id="flip">Flip left servo (button)</button></div>
+    <div class="sub" id="potNote"></div><button id="flip">Roll offset (button)</button></div>
 
   <div class="mode" id="aoaBox"><header>Angle of attack <span id="aoaV">0°</span></header>
     <div class="sl" style="margin-top:8px"><input type="range" id="aoa" min="-15" max="15" value="0"></div></div>
 
-  <div class="mode act" data-m="1"><header><span>Mode 1: Roll</span><span id="v1">0</span></header><div class="body">
+  <div class="mode act" data-m="1"><header><span>Mode 1: Roll + morph</span><span id="v1">0</span></header><div class="body">
     <div class="sl"><input type="range" id="roll" min="-100" max="100" value="0"><i class="ghost" id="g1"></i></div>
-    <div class="sub" style="margin-top:8px">Left / right wing: blue = commanded, red = real (ghost). Left = TE down, right = TE up.</div>
+    <div class="sub" style="margin:10px 0 2px">Vertical morph (both wings together)</div>
+    <div class="sl"><input type="range" id="rollMorph" min="-100" max="100" value="0"><i class="ghost" id="g1m"></i></div>
+    <div class="sub" style="margin-top:8px">Top slider: roll, the wings differ by at most 10°. Second slider: vertical morph. Bars: blue = commanded, red = real.</div>
     <div class="lr"><span>L</span><div class="bar"><i class="c" id="cL"></i><i class="g" id="gL"></i></div></div>
     <div class="lr"><span>R</span><div class="bar"><i class="c" id="cR"></i><i class="g" id="gR"></i></div></div></div></div>
 
@@ -135,6 +137,7 @@ body.hacked #hack{display:flex;animation:glitch .25s steps(2) infinite}
 const CFG={minA:0,maxA:60,aoaMin:-15,aoaMax:15,
   chord:150,      // mm
   span:90,        // mm (wing width, used by the 3D views)
+  rollDiff:10,    // deg: max difference between left and right wing in analogue roll (match ROLL_DIFF in the Arduino sketch)
   skin:1,         // how far the skin blends left->right servo angle: 1 = smoothly across the whole span, 0.12 = abrupt step at the middle
   thick:13,       // NACA 0013 -> 19.5 mm thick
   pivot:0.30,     // mounting hole at 45 mm / 150 mm
@@ -160,7 +163,7 @@ const neutral=()=>CFG.neutral!=null?CFG.neutral:mid();
 const uToAngle=u=>Math.max(CFG.minA,Math.min(CFG.maxA,neutral()-CFG.dir*u/100*span()/2));
 const angleToU=a=>-(a-neutral())/(span()/2)*100*CFG.dir;
 function target(){
-  if(S.mode===1){const r=+$('#roll').value;return[uToAngle(r),uToAngle(-r)]}
+  if(S.mode===1){const dm=CFG.rollDiff/2,d=+$('#roll').value/100*dm,c=Math.max(CFG.minA+dm,Math.min(CFG.maxA-dm,uToAngle(+$('#rollMorph').value)));return[c-CFG.dir*d,c+CFG.dir*d]}
   if(S.mode===2){const a=uToAngle(+$('#morph').value);return[a,a]}
   return[uToAngle(+$('#sl').value),uToAngle(+$('#sr').value)];
 }
@@ -206,7 +209,7 @@ function ledColor(){
 }
 function ghosts(){
   const pos=u=>(u+100)/2,uL=angleToU(A.l),uR=angleToU(A.r),[tl,tr]=target();
-  $('#g1').style.left=pos((uL-uR)/2)+'%';
+  $('#g1').style.left=pos(Math.max(-100,Math.min(100,(uL-uR)/2/(CFG.rollDiff/span())))) +'%';$('#g1m').style.left=pos((uL+uR)/2)+'%';
   $('#g2').style.bottom=pos((uL+uR)/2)+'%';
   $('#g3l').style.bottom=pos(uL)+'%';$('#g3r').style.bottom=pos(uR)+'%';
   $('#gL').style.left=pos(-uL)+'%';$('#gR').style.left=pos(-uR)+'%';
@@ -218,11 +221,11 @@ function render(){
   $('#anaBox').style.display=S.src==='A'?'block':'none';
   $('#pot').disabled=lv;if(lv)$('#pot').value=S.pot;$('#potV').textContent=S.pot;
   $('#flip').style.display=lv?'none':'inline-block';
-  $('#potNote').textContent=(lv?'Reading the real potentiometer. Press the physical button to flip the left servo.':'No live Arduino telemetry: drag this slider to simulate the potentiometer.')+(S.inv?' Left servo flipped.':'');
+  $('#potNote').textContent=(lv?'Reading the real potentiometer. Press the physical button to toggle the roll offset.':'No live Arduino telemetry: drag this slider to simulate the potentiometer.')+(S.inv?' Roll offset on.':'');
   $$('.mode[data-m]').forEach(m=>{const on=+m.dataset.m===S.mode;m.classList.toggle('act',on);m.classList.toggle('off',!on)});
   $('#srcD').classList.toggle('on',S.src==='D');$('#srcA').classList.toggle('on',S.src==='A');
   $('#ctrl').classList.toggle('locked',S.src==='A'||S.hacked);
-  $('#v1').textContent=sg($('#roll').value)+'%';$('#v2').textContent=sg($('#morph').value)+'%';
+  $('#v1').textContent=sg($('#roll').value)+'% / '+sg($('#rollMorph').value)+'%';$('#v2').textContent=sg($('#morph').value)+'%';
   $('#v3').textContent=`${sg($('#sl').value)}% / ${sg($('#sr').value)}%`;$('#aoaV').textContent=sg($('#aoa').value)+'°';
   $('#lr').textContent=`${Math.round(A.l)}° / ${Math.round(A.r)}°`;
   const c=ledColor();$('#led').style.background=c;$('#led').style.boxShadow=`0 0 12px ${c}`;
@@ -264,6 +267,7 @@ $('#connect').onclick=async()=>{
     writer=port.writable.getWriter();S.conn=true;lastAn='D';$('#connect').textContent='Link established';
     const enc=new TextEncoder();const w=writer;writer={write:t=>w.write(enc.encode(t))};
     setTimeout(()=>{pushLimits();send('M,'+S.mode);send('SM,'+(S.smooth?1:0))},1800); // Uno resets on connect
+    setTimeout(()=>{if(S.conn&&!S.lastT){$('#connect').textContent='Linked, but no data';toast('Connected, but the Arduino sends no wing data. Upload morphing_wing.ino (115200 baud); the simple pot-to-servo sketch does not talk to this page.')}},5000);
     const rd=port.readable.pipeThrough(new TextDecoderStream()).getReader();let buf='';
     for(;;){const{value,done}=await rd.read();if(done)break;buf+=value;let i;
       while((i=buf.indexOf('\n'))>=0){telemetry(buf.slice(0,i).trim());buf=buf.slice(i+1)}}
@@ -273,7 +277,7 @@ $('#connect').onclick=async()=>{
 let lastAn='D';
 function telemetry(l){
   const p=l.split(',');if(p[0]!=='T'||p.length<7)return;
-  S.lastT=performance.now();
+  S.lastT=performance.now();if($('#connect').textContent!=='Link established')$('#connect').textContent='Link established';
   A.l=+p[2];A.r=+p[3];S.pot=+p[1];S.inv=!!+p[5];
   const an=+p[4]?'A':'D';
   // only react when the Arduino's flag CHANGES (physical switch), so it can't fight the UI button
@@ -287,7 +291,7 @@ function telemetry(l){
 let t0=performance.now();
 setInterval(()=>{
   const t=(performance.now()-t0)/1000;let[tl,tr]=target();
-  if(S.src==='A'){const a=CFG.minA+S.pot/1023*span();tr=a;tl=S.inv?CFG.maxA+CFG.minA-a:a}
+  if(S.src==='A'){const a=CFG.minA+S.pot/1023*span(),d=S.inv?CFG.rollDiff/2:0,cl=x=>Math.max(CFG.minA,Math.min(CFG.maxA,x));tl=cl(a+d);tr=cl(a-d)}
   if(S.disco){const s=Math.sin(t*2.5);tl=mid()+s*span()/2;tr=mid()-s*span()/2}
   if(S.conn&&S.src==='D'&&!S.hacked&&!S.disco)send(`D,${Math.round(tl)},${Math.round(tr)}`);
   if(!isLive()){ // simulation
@@ -310,7 +314,7 @@ const Fl=(()=>{
   const V3={yaw:-.55,pitch:.32,zoom:1},CX3=150,NS=25,MS=22,RL=2*(MS+1),pr=[0,0,0,0,0];
   const SX=new Float32Array(NS*RL),SY=new Float32Array(NS*RL),SZ=new Float32Array(NS*RL),RX=new Float32Array(NS*RL),RY=new Float32Array(NS*RL);
   let hd=0,vx=0,vy=0;
-  let ms=15,u0=.1,uc=.1,on=false,view='speed',cl=0,cd=0,ramp=0,sig='',seen=null,seenAt=0,curP=null,img,ctx,off,octx;
+  let ms=15,u0=.1,uc=.1,on=false,view='speed',cl=0,cd=0,fxF=0,fyF=0,ramp=0,sig='',seen=null,seenAt=0,curP=null,img,ctx,off,octx;
   const eq=(k,r,u,v)=>{const e=ex[k]*u+ey[k]*v;return w[k]*r*(1+3*e+4.5*e*e-1.5*(u*u+v*v))};
   const rr=()=>ramp*ramp*(3-2*ramp);               // smooth 0..1 inlet ramp
   function wing(){const d=-angleToU((A.l+A.r)/2)/100*CFG.maxDefl*Math.PI/180,aoa=+$('#aoa').value;
@@ -431,6 +435,7 @@ const Fl=(()=>{
       ctx.fillStyle=col;ctx.fill();ctx.strokeStyle=col;ctx.lineWidth=.8;ctx.stroke();
     }
     flow3(1);
+    drawForce3D();
     ctx.fillStyle='rgba(244,239,224,.85)';ctx.font='bold 18px "Courier New",monospace';
     proj(-27,30,-hs);ctx.fillText('L',pr[0]-5,pr[1]);proj(-27,30,hs);ctx.fillText('R',pr[0]-5,pr[1]);
     ctx.font='14px "Courier New",monospace';ctx.fillStyle='rgba(244,239,224,.6)';
@@ -439,7 +444,7 @@ const Fl=(()=>{
   // air at rest, wing already in place, inlet ramps up from the left
   function restart(wg){
     for(let k=0;k<9;k++){f.fill(w[k],k*N,(k+1)*N);g.fill(w[k],k*N,(k+1)*N)}
-    ux.fill(0);uy.fill(0);cl=cd=0;ramp=0;setMask(wg);sig=wg.s;seen=null;initParticles();uc=u0;dye.fill(0);dfr=0;
+    ux.fill(0);uy.fill(0);cl=cd=fxF=fyF=0;ramp=0;setMask(wg);sig=wg.s;seen=null;initParticles();uc=u0;dye.fill(0);dfr=0;
   }
   function step(){
     let Fx=0,Fy=0;uc+=(u0-uc)*.01;const ui=uc*rr();
@@ -459,8 +464,22 @@ const Fl=(()=>{
     }
     const t=f;f=g;g=t;
     if(ramp<1)ramp=Math.min(1,ramp+.004);           // ~250 steps to full speed
-    else{const q=.5*uc*uc*C;cl+=.02*(-Fy/q-cl);cd+=.02*(Fx/q-cd)}
+    else{const q=.5*uc*uc*C;cl+=.02*(-Fy/q-cl);cd+=.02*(Fx/q-cd);fxF+=.02*(Fx/q-fxF);fyF+=.02*(Fy/q-fyF)}
     if(!isFinite(cl)||!isFinite(cd))restart(wing());
+  }
+  const fShow=()=>ramp>=1&&ms>=8&&Math.abs(uc-u0)<.003;      // net force is only meaningful once the flow has settled
+  function arrow2(x0,y0,dx,dy){
+    const L=Math.hypot(dx,dy);if(L<5)return;const a=Math.atan2(dy,dx),hl=Math.min(18,L*.45),x1=x0+dx,y1=y0+dy;
+    const path=()=>{ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(x1,y1);ctx.moveTo(x1,y1);ctx.lineTo(x1-hl*Math.cos(a-.45),y1-hl*Math.sin(a-.45));ctx.moveTo(x1,y1);ctx.lineTo(x1-hl*Math.cos(a+.45),y1-hl*Math.sin(a+.45))};
+    ctx.lineCap='round';ctx.lineJoin='round';path();ctx.lineWidth=7;ctx.strokeStyle='#1d1c19';ctx.stroke();path();ctx.lineWidth=4;ctx.strokeStyle='#ff5a4a';ctx.stroke();
+  }
+  function drawForce2D(){                                  // red arrow from the quarter-chord point: lift + drag
+    if(!fShow())return;let dx=fxF*110,dy=fyF*110;const L=Math.hypot(dx,dy);if(L>260){dx*=260/L;dy*=260/L}
+    arrow2(X0*SC,Y0*SC,dx,dy);ctx.fillStyle='#ff5a4a';ctx.font='bold 14px "Courier New",monospace';ctx.fillText('net force',X0*SC+dx*.5+6,Y0*SC+dy*.5-8);
+  }
+  function drawForce3D(){
+    if(!fShow())return;let fx=fxF*45,fy=-fyF*45;const L=Math.hypot(fx,fy);if(L>90){fx*=90/L;fy*=90/L}
+    proj(X0-CX3,0,0);const x0=pr[0],y0=pr[1];proj(X0-CX3+fx,fy,0);arrow2(x0,y0,pr[0]-x0,pr[1]-y0);
   }
   const cl01=x=>Math.max(0,Math.min(1,x)),mix=(a,b,t)=>a+(b-a)*t;
   function draw(){
@@ -480,6 +499,7 @@ const Fl=(()=>{
     if(view==='wind')drawTrails();
     if(curP){ctx.beginPath();curP.forEach(([x,y],i)=>i?ctx.lineTo(x*SC,y*SC):ctx.moveTo(x*SC,y*SC));
       ctx.closePath();ctx.fillStyle='#e6dec5';ctx.fill();ctx.lineWidth=2;ctx.strokeStyle='#1d1c19';ctx.stroke()}
+    drawForce2D();
   }
   function loop(){
     if(!on||view==='gpu')return;
@@ -502,7 +522,7 @@ const Fl=(()=>{
   let G=null,gSig='',gSeen=null,gSeenAt=0,gRamp=0,gUc=.1,gHead=0,gN=0,gFps=0,gT=0;
   const GC={yaw:-.6,pitch:.3,zoom:1},gcv=$('#gpuCv');
   const sub=new ArrayBuffer(32),su32=new Uint32Array(sub),sf32=new Float32Array(sub);
-  const pub=new ArrayBuffer(48),pu32=new Uint32Array(pub),pf32=new Float32Array(pub),cub=new Float32Array(16);
+  const pub=new ArrayBuffer(48),pu32=new Uint32Array(pub),pf32=new Float32Array(pub),cub=new Float32Array(24);
   const WG_COMMON=`
 var<private> E:array<vec3i,19>=array<vec3i,19>(vec3i(0,0,0),vec3i(1,0,0),vec3i(-1,0,0),vec3i(0,1,0),vec3i(0,-1,0),vec3i(0,0,1),vec3i(0,0,-1),
  vec3i(1,1,0),vec3i(-1,-1,0),vec3i(1,-1,0),vec3i(-1,1,0),vec3i(1,0,1),vec3i(-1,0,-1),vec3i(1,0,-1),vec3i(-1,0,1),vec3i(0,1,1),vec3i(0,-1,-1),vec3i(0,1,-1),vec3i(0,-1,1));
@@ -517,6 +537,7 @@ struct SP{nx:u32,ny:u32,nz:u32,n:u32,uin:f32,om:f32,a:f32,b:f32};
 @group(0) @binding(2) var<storage,read_write> fout:array<f32>;
 @group(0) @binding(3) var<storage,read> solid:array<u32>;
 @group(0) @binding(4) var<storage,read_write> vel:array<vec4f>;
+@group(0) @binding(5) var<storage,read_write> F:array<atomic<i32>,4>;
 @compute @workgroup_size(64) fn main(@builtin(global_invocation_id) g:vec3u){
   let n=g.x; if(n>=P.n){return;}
   let N=P.n; let nx=i32(P.nx); let ny=i32(P.ny); let nz=i32(P.nz);
@@ -528,7 +549,7 @@ struct SP{nx:u32,ny:u32,nz:u32,n:u32,uin:f32,om:f32,a:f32,b:f32};
   var fi:array<f32,19>; var r=0.0; var u=vec3f(0.0);
   for(var q=0u;q<19u;q++){
     let e=E[q]; let sn=u32((k-e.z)*ny*nx+(j-e.y)*nx+(i-e.x));
-    var v:f32; if(solid[sn]==1u){v=fin[opp(q)*N+n];}else{v=fin[q*N+sn];}
+    var v:f32; if(solid[sn]==1u){v=fin[opp(q)*N+n]; let fv=-2.0*v*vec3f(e)*100000.0; atomicAdd(&F[0],i32(fv.x)); atomicAdd(&F[1],i32(fv.y)); atomicAdd(&F[2],i32(fv.z));}else{v=fin[q*N+sn];}
     fi[q]=v; r+=v; u+=v*vec3f(e);
   }
   u=u/r; vel[n]=vec4f(u,r);
@@ -576,7 +597,7 @@ fn samp(p:vec3f)->vec3f{
   trail[p*Q.L+Q.head]=vec4f(np,sp);
 }`;
   const WG_CAM=`
-struct CU{d:vec4f,c:vec4f,s:vec4f,h:vec4f};
+struct CU{d:vec4f,c:vec4f,s:vec4f,h:vec4f,b:vec4f,f:vec4f};
 @group(0) @binding(0) var<uniform> U:CU;
 fn rot(p:vec3f)->vec3f{
   let c=cos(U.c.x); let s=sin(U.c.x); let cp=cos(U.c.y); let sq=sin(U.c.y);
@@ -604,6 +625,16 @@ struct TO{@builtin(position) pos:vec4f,@location(0) col:vec4f};
   var a=0.85; if(abs(t.z-U.d.z*0.5)>U.h.y){a=0.3;}
   var o:TO; o.pos=proj(t.xyz); o.col=vec4f(c,a); return o; }
 @fragment fn fs(i:TO)->@location(0) vec4f{ return i.col; }`;
+  const WG_ARROW=`
+@vertex fn vs(@builtin(vertex_index) vi:u32)->@builtin(position) vec4f{
+  if(U.f.w<0.5){return vec4f(2.0,2.0,2.0,1.0);}
+  let base=U.b.xyz; let L=length(U.f.xyz); let tip=base+U.f.xyz;
+  var dir=vec3f(1.0,0.0,0.0); if(L>0.001){dir=U.f.xyz/L;}
+  var rf=vec3f(0.0,0.0,1.0); if(abs(dir.z)>0.9){rf=vec3f(0.0,1.0,0.0);}
+  let pp=normalize(cross(dir,rf)); let hl=min(6.0,L*0.4);
+  var pts=array<vec3f,6>(base,tip,tip,tip-dir*hl+pp*hl*0.45,tip,tip-dir*hl-pp*hl*0.45);
+  return proj(pts[vi]); }
+@fragment fn fs()->@location(0) vec4f{ return vec4f(1.0,0.35,0.29,1.0); }`;
   const WG_BOX=`
 @vertex fn vs(@builtin(vertex_index) vi:u32)->@builtin(position) vec4f{
   let e=vi/2u; let end=f32(vi%2u); let a=e/4u; let c=e%4u; let b0=f32(c&1u); let b1=f32((c>>1u)&1u);
@@ -656,7 +687,7 @@ struct TO{@builtin(position) pos:vec4f,@location(0) col:vec4f};
       dev.onuncapturederror=e=>{console.error(e.error.message);toast('GPU error: '+e.error.message.slice(0,100))};
       dev.pushErrorScope('validation');
       const fmt=navigator.gpu.getPreferredCanvasFormat(),N=GG.N,U=GPUBufferUsage,g={dev},mk=(size,usage)=>dev.createBuffer({size,usage});
-      g.SU=mk(32,U.UNIFORM|U.COPY_DST);g.PU=mk(48,U.UNIFORM|U.COPY_DST);g.CU=mk(64,U.UNIFORM|U.COPY_DST);
+      g.SU=mk(32,U.UNIFORM|U.COPY_DST);g.PU=mk(48,U.UNIFORM|U.COPY_DST);g.CU=mk(96,U.UNIFORM|U.COPY_DST);g.F=mk(16,U.STORAGE|U.COPY_SRC|U.COPY_DST);g.Fread=mk(16,U.MAP_READ|U.COPY_DST);
       g.f0=mk(19*N*4,U.STORAGE);g.f1=mk(19*N*4,U.STORAGE);g.solid=mk(N*4,U.STORAGE|U.COPY_DST);g.vel=mk(N*16,U.STORAGE);
       g.ppos=mk(GG.NP*16,U.STORAGE|U.COPY_DST);g.trail=mk(GG.NP*GG.TL*16,U.STORAGE|U.COPY_DST);g.wingVB=mk(6700*28,U.VERTEX|U.COPY_DST);
       const cp=code=>dev.createComputePipeline({layout:'auto',compute:{module:dev.createShaderModule({code}),entryPoint:'main'}});
@@ -669,10 +700,11 @@ struct TO{@builtin(position) pos:vec4f,@location(0) col:vec4f};
       g.wingP=rp(WG_CAM+WG_WING,'triangle-list',true,'less',[{arrayStride:28,attributes:[{shaderLocation:0,offset:0,format:'float32x3'},{shaderLocation:1,offset:12,format:'float32x3'},{shaderLocation:2,offset:24,format:'float32'}]}]);
       g.trailP=rp(WG_CAM+WG_TRAIL,'line-list',false,'less',null,blend);
       g.boxP=rp(WG_CAM+WG_BOX,'line-list',false,'always',null,blend);
+      g.arrowP=rp(WG_CAM+WG_ARROW,'line-list',false,'always',null);
       const bg=(pipe,bufs)=>dev.createBindGroup({layout:pipe.getBindGroupLayout(0),entries:bufs.map((b,i)=>({binding:i,resource:{buffer:b}}))});
-      g.bgSim=[bg(g.sim,[g.SU,g.f0,g.f1,g.solid,g.vel]),bg(g.sim,[g.SU,g.f1,g.f0,g.solid,g.vel])];
+      g.bgSim=[bg(g.sim,[g.SU,g.f0,g.f1,g.solid,g.vel,g.F]),bg(g.sim,[g.SU,g.f1,g.f0,g.solid,g.vel,g.F])];
       g.bgInit=bg(g.init,[g.SU,g.f0,g.f1]);g.bgPart=bg(g.part,[g.PU,g.vel,g.solid,g.ppos,g.trail]);
-      g.bgWing=bg(g.wingP,[g.CU]);g.bgTrail=bg(g.trailP,[g.CU,g.trail]);g.bgBox=bg(g.boxP,[g.CU]);
+      g.bgWing=bg(g.wingP,[g.CU]);g.bgTrail=bg(g.trailP,[g.CU,g.trail]);g.bgBox=bg(g.boxP,[g.CU]);g.bgArrow=bg(g.arrowP,[g.CU]);
       g.ctx=gcv.getContext('webgpu');g.ctx.configure({device:dev,format:fmt,alphaMode:'opaque'});
       g.depth=dev.createTexture({size:[gcv.width,gcv.height],format:'depth24plus',usage:GPUTextureUsage.RENDER_ATTACHMENT});
       const err=await dev.popErrorScope();if(err)throw new Error(err.message);
@@ -680,7 +712,7 @@ struct TO{@builtin(position) pos:vec4f,@location(0) col:vec4f};
     }catch(e){console.error(e);toast('GPU view failed: '+String(e.message||e).slice(0,110));return false}
   }
   function gReset(){                                  // rebuild the wing, put the air at rest, restart the wind
-    const w=gWing();gSig=w.s;gSeen=null;gRamp=0;gUc=u0;gHead=0;
+    const w=gWing();gSig=w.s;gSeen=null;gRamp=0;gUc=u0;gHead=0;gF[0]=gF[1]=gF[2]=0;
     buildMask(w);buildMesh(w);
     su32.set([GG.NX,GG.NY,GG.NZ,GG.N]);sf32[4]=0;sf32[5]=1/GG.TAU;G.dev.queue.writeBuffer(G.SU,0,sub);
     const enc=G.dev.createCommandEncoder(),ps=enc.beginComputePass();
@@ -690,27 +722,41 @@ struct TO{@builtin(position) pos:vec4f,@location(0) col:vec4f};
       pp.set([x,y,z,Math.random()*300],p*4);for(let k=0;k<GG.TL;k++)tr.set([x,y,z,1],(p*GG.TL+k)*4)}
     G.dev.queue.writeBuffer(G.ppos,0,pp);G.dev.queue.writeBuffer(G.trail,0,tr);
   }
+  let gF=[0,0,0];
+  function gReadForce(){                              // read the summed momentum exchange back (async, never blocks drawing)
+    G.Fread.mapAsync(GPUMapMode.READ).then(()=>{
+      const a=new Int32Array(G.Fread.getMappedRange().slice(0));G.Fread.unmap();G.fBusy=false;
+      const k=1e5*GG.STEPS*.5*Math.max(gUc,.02)**2*GG.C*2*gHs();for(let i=0;i<3;i++)gF[i]+=.15*(a[i]/k-gF[i]);
+    }).catch(()=>{G.fBusy=false});
+  }
+  function gShowF(){return gRamp>=1&&ms>=8&&Math.abs(gUc-u0)<.003&&isFinite(gF[0]+gF[1]+gF[2])}
+  function gArrow(){
+    let fx=gF[0]*40,fy=gF[1]*40,fz=gF[2]*40;const L=Math.hypot(fx,fy,fz);if(L>60){fx*=60/L;fy*=60/L;fz*=60/L}
+    return[GG.X0,GG.Y0,GG.NZ/2,0,fx,fy,fz,gShowF()?1:0];
+  }
   function gFrame(step){
     if(!G)return;const dev=G.dev,enc=dev.createCommandEncoder();
     if(step){
       gUc+=(u0-gUc)*(1-Math.pow(.99,GG.STEPS));gRamp=Math.min(1,gRamp+.004*GG.STEPS);
       sf32[4]=gUc*gRamp*gRamp*(3-2*gRamp);dev.queue.writeBuffer(G.SU,0,sub);
+      enc.clearBuffer(G.F);
       const ps=enc.beginComputePass();ps.setPipeline(G.sim);
       for(let s=0;s<GG.STEPS;s++){ps.setBindGroup(0,G.bgSim[s&1]);ps.dispatchWorkgroups(Math.ceil(GG.N/64))}
-      ps.end();
+      ps.end();if(!G.fBusy)enc.copyBufferToBuffer(G.F,0,G.Fread,0,16);
       gHead=(gHead+1)%GG.TL;pf32.set([GG.NX,GG.NY,GG.NZ,0]);pu32.set([GG.NP,GG.TL,gHead,gN++],4);pf32[8]=8;pf32[9]=Math.max(gUc,.02);
       dev.queue.writeBuffer(G.PU,0,pub);
       const pp=enc.beginComputePass();pp.setPipeline(G.part);pp.setBindGroup(0,G.bgPart);pp.dispatchWorkgroups(Math.ceil(GG.NP/64));pp.end();
     }
     const W=gcv.width,H=gcv.height;
     cub.set([GG.NX,GG.NY,GG.NZ,0,GC.yaw,GC.pitch,GC.zoom,W/(GG.NX*1.45),W,H,Math.max(gUc,.02),GG.TL,gHead,gHs(),0,0]);
-    dev.queue.writeBuffer(G.CU,0,cub);
+    cub.set(gArrow(),16);dev.queue.writeBuffer(G.CU,0,cub);
     const r=enc.beginRenderPass({colorAttachments:[{view:G.ctx.getCurrentTexture().createView(),clearValue:{r:.055,g:.086,b:.118,a:1},loadOp:'clear',storeOp:'store'}],
       depthStencilAttachment:{view:G.depth.createView(),depthClearValue:1,depthLoadOp:'clear',depthStoreOp:'store'}});
     r.setPipeline(G.boxP);r.setBindGroup(0,G.bgBox);r.draw(24);
     r.setPipeline(G.wingP);r.setBindGroup(0,G.bgWing);r.setVertexBuffer(0,G.wingVB);r.draw(G.wingN||0);
     r.setPipeline(G.trailP);r.setBindGroup(0,G.bgTrail);r.draw(GG.NP*(GG.TL-1)*2);
-    r.end();dev.queue.submit([enc.finish()]);
+    r.setPipeline(G.arrowP);r.setBindGroup(0,G.bgArrow);r.draw(6);
+    r.end();const doRead=step&&!G.fBusy;if(doRead)G.fBusy=true;dev.queue.submit([enc.finish()]);if(doRead)gReadForce();
   }
   function gloop(){
     if(!on||view!=='gpu'||!G)return;
@@ -722,15 +768,15 @@ struct TO{@builtin(position) pos:vec4f,@location(0) col:vec4f};
     $('#flowLoad').classList.toggle('show',wait);
     gFrame(!wait);
     gFps=gFps*.9+(1000/Math.max(1,now-gT))*.1;gT=now;
-    $('#flowRead').textContent=`GPU 3D | grid ${GG.NX}x${GG.NY}x${GG.NZ} | sim Re ≈ ${Math.round(u0*GG.C/((GG.TAU-.5)/3))} | ${gFps.toFixed(0)} fps | `+(gRamp<1?'flow starting up…':Math.abs(gUc-u0)<.003?'steady':'adjusting to new speed…');
+    $('#flowRead').textContent=`GPU 3D | grid ${GG.NX}x${GG.NY}x${GG.NZ} | sim Re ≈ ${Math.round(u0*GG.C/((GG.TAU-.5)/3))} | ${gFps.toFixed(0)} fps | `+(gRamp<1?'flow starting up…':Math.abs(gUc-u0)<.003?(gShowF()?`Cl ${gF[1].toFixed(2)} | Cd ${gF[0].toFixed(2)}`:'steady'):'adjusting to new speed…');
     requestAnimationFrame(gloop);
   }
   const NOTES={
-    speed:'Speed: colour shows how fast the air moves (dark blue slow, yellow fast), and the pale bands are smoke pulses showing how the flow bends around the wing.',
-    vorticity:'Vorticity: red and blue show where the air is spinning in opposite directions, which picks out the thin layer on the wing and the wake behind it.',
-    wind:'Wind: moving streaks carried by the air (blue slow, white normal, yellow accelerated) show where the wind is deflected.',
-    '3d':'3D: your wing with a smooth skin blending the left and right servo angles across the span, in the 2D airflow stretched across it. Drag to rotate, scroll to zoom.',
-    gpu:'3D (GPU): a real 3D airflow simulation on your graphics card, with the wing skin blending smoothly from the left servo angle to the right. Drag to rotate, scroll to zoom.'};
+    speed:'Speed: colour shows how fast the air moves (dark blue slow, yellow fast), with pale smoke pulses bending around the wing. The red arrow is the net force on the wing.',
+    vorticity:'Vorticity: red and blue show where the air spins in opposite directions, picking out the thin layer on the wing and its wake. The red arrow is the net force on the wing.',
+    wind:'Wind: moving streaks (blue slow, white normal, yellow accelerated) show where the wind is deflected. The red arrow is the net force on the wing.',
+    '3d':'3D: your wing with a smooth skin blending the left and right servo angles, in the 2D airflow stretched across it. Drag to rotate, scroll to zoom; the red arrow is the net force.',
+    gpu:'3D (GPU): a real 3D airflow simulation on your graphics card, with the skin blending smoothly from the left servo angle to the right. Drag to rotate, scroll to zoom; the red arrow is the net force.'};
   const NEXT={speed:'vorticity',vorticity:'wind',wind:'3d','3d':'gpu',gpu:'speed'},LABEL={'3d':'3D',gpu:'3D (GPU)'};
   function setView(v){
     const prev=view;view=v;
