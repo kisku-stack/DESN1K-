@@ -100,7 +100,7 @@ body.hacked #hack{display:flex;animation:glitch .25s steps(2) infinite}
     <div class="sl"><input type="range" id="roll" min="-100" max="100" value="0"><i class="ghost" id="g1"></i></div>
     <div class="sub" style="margin:10px 0 2px">Vertical morph (both wings together)</div>
     <div class="sl"><input type="range" id="rollMorph" min="-100" max="100" value="0"><i class="ghost" id="g1m"></i></div>
-    <div class="sub" style="margin-top:8px">Top slider: roll, the wings differ by at most 10°. Second slider: vertical morph. Bars: blue = commanded, red = real.</div>
+    <div class="sub" style="margin-top:8px">Top slider: roll, the wings differ by at most <span id="rollTxt">25</span>°. Second slider: vertical morph. Bars: blue = commanded, red = real.</div>
     <div class="lr"><span>L</span><div class="bar"><i class="c" id="cL"></i><i class="g" id="gL"></i></div></div>
     <div class="lr"><span>R</span><div class="bar"><i class="c" id="cR"></i><i class="g" id="gR"></i></div></div></div></div>
 
@@ -116,7 +116,7 @@ body.hacked #hack{display:flex;animation:glitch .25s steps(2) infinite}
 </div>
 <div class="sheet" style="grid-column:1/-1">
   <h2>Exhibit C: Flow simulation (live wing shape)</h2>
-  <div class="row"><button id="flowBtn">Run simulation</button><button id="flowMode">Showing: speed</button>
+  <div class="row"><button id="flowBtn">Run simulation</button><button id="flowMode">Showing: speed</button><button id="flowForce" class="on">Reaction force: on</button>
     <label>Tunnel speed <input type="range" id="flowU" min="0" max="25" step="0.5" value="15" style="width:130px"></label>
     <input type="number" id="flowV" min="0" max="25" step="0.5" value="15" style="width:70px"> m/s
     <span id="flowRead" class="sub"></span></div>
@@ -137,7 +137,7 @@ body.hacked #hack{display:flex;animation:glitch .25s steps(2) infinite}
 const CFG={minA:0,maxA:60,aoaMin:-15,aoaMax:15,
   chord:150,      // mm
   span:90,        // mm (wing width, used by the 3D views)
-  rollDiff:10,    // deg: max difference between left and right wing in analogue roll (match ROLL_DIFF in the Arduino sketch)
+  rollDiff:25,    // deg: max difference between left and right wing in roll (match ROLL_DIFF in the Arduino sketch)
   skin:1,         // how far the skin blends left->right servo angle: 1 = smoothly across the whole span, 0.12 = abrupt step at the middle
   thick:13,       // NACA 0013 -> 19.5 mm thick
   pivot:0.30,     // mounting hole at 45 mm / 150 mm
@@ -230,6 +230,7 @@ function render(){
   $('#lr').textContent=`${Math.round(A.l)}° / ${Math.round(A.r)}°`;
   const c=ledColor();$('#led').style.background=c;$('#led').style.boxShadow=`0 0 12px ${c}`;
   $('#ledTxt').textContent=S.hacked?'ALERT':S.disco?'DISCO':S.src==='A'?'ANALOGUE':['','ROLL','MORPH','INDEP'][S.mode];
+  $('#rollTxt').textContent=CFG.rollDiff;
   drawAirfoil((A.l+A.r)/2,+$('#aoa').value);
   const tilt=(A.l-A.r)/span()*30;
   $('#fl').setAttribute('y2',-tilt*0.9);$('#fr').setAttribute('y2',tilt*0.9);
@@ -314,7 +315,7 @@ const Fl=(()=>{
   const V3={yaw:-.55,pitch:.32,zoom:1},CX3=150,NS=25,MS=22,RL=2*(MS+1),pr=[0,0,0,0,0];
   const SX=new Float32Array(NS*RL),SY=new Float32Array(NS*RL),SZ=new Float32Array(NS*RL),RX=new Float32Array(NS*RL),RY=new Float32Array(NS*RL);
   let hd=0,vx=0,vy=0;
-  let ms=15,u0=.1,uc=.1,on=false,view='speed',cl=0,cd=0,fxF=0,fyF=0,ramp=0,sig='',seen=null,seenAt=0,curP=null,img,ctx,off,octx;
+  let ms=15,u0=.1,uc=.1,on=false,view='speed',cl=0,cd=0,fxF=0,fyF=0,ramp=0,sig='',seen=null,seenAt=0,curP=null,curC=[X0,Y0],showF=true,img,ctx,off,octx;
   const eq=(k,r,u,v)=>{const e=ex[k]*u+ey[k]*v;return w[k]*r*(1+3*e+4.5*e*e-1.5*(u*u+v*v))};
   const rr=()=>ramp*ramp*(3-2*ramp);               // smooth 0..1 inlet ramp
   function wing(){const d=-angleToU((A.l+A.r)/2)/100*CFG.maxDefl*Math.PI/180,aoa=+$('#aoa').value;
@@ -327,8 +328,12 @@ const Fl=(()=>{
   }
   function inside(P,x,y){let c=false;for(let i=0,j=P.length-1;i<P.length;j=i++){
     if((P[i][1]>y)!==(P[j][1]>y)&&x<(P[j][0]-P[i][0])*(y-P[i][1])/(P[j][1]-P[i][1])+P[i][0])c=!c}return c}
+  function centroid(P){                                 // area centroid of a polygon (shoelace)
+    let a2=0,cx=0,cy=0;for(let i=0,j=P.length-1;i<P.length;j=i++){const k=P[j][0]*P[i][1]-P[i][0]*P[j][1];a2+=k;cx+=(P[j][0]+P[i][0])*k;cy+=(P[j][1]+P[i][1])*k}
+    return Math.abs(a2)<1e-9?[P[0][0],P[0][1]]:[cx/(3*a2),cy/(3*a2)];
+  }
   function setMask(wg){
-    const P=poly(wg.d,wg.aoa);curP=P;let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;
+    const P=poly(wg.d,wg.aoa);curP=P;curC=centroid(P);let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;
     P.forEach(([x,y])=>{x0=Math.min(x0,x);x1=Math.max(x1,x);y0=Math.min(y0,y);y1=Math.max(y1,y)});
     solid.fill(0);
     for(let j=Math.max(1,Math.floor(y0)-1);j<=Math.min(NY-2,Math.ceil(y1)+1);j++)
@@ -408,6 +413,7 @@ const Fl=(()=>{
     ctx.stroke();
     // wing: sections along the span, left half uses the left servo, right half the right servo
     const dL=-angleToU(A.l)/100*CFG.maxDefl*Math.PI/180,dR=-angleToU(A.r)/100*CFG.maxDefl*Math.PI/180,aoa=+$('#aoa').value;
+    const cc=centroid(section((dL+dR)/2,aoa));      // centre of the wing (mid-chord, mid-span)
     for(let k=0;k<NS;k++){
       const z=-hs+2*hs*k/(NS-1),w=skinW(z/hs);
       const P=section(dL*(1-w)+dR*w,aoa);
@@ -435,7 +441,7 @@ const Fl=(()=>{
       ctx.fillStyle=col;ctx.fill();ctx.strokeStyle=col;ctx.lineWidth=.8;ctx.stroke();
     }
     flow3(1);
-    drawForce3D();
+    drawForce3D(cc[0],cc[1]);
     ctx.fillStyle='rgba(244,239,224,.85)';ctx.font='bold 18px "Courier New",monospace';
     proj(-27,30,-hs);ctx.fillText('L',pr[0]-5,pr[1]);proj(-27,30,hs);ctx.fillText('R',pr[0]-5,pr[1]);
     ctx.font='14px "Courier New",monospace';ctx.fillStyle='rgba(244,239,224,.6)';
@@ -467,7 +473,7 @@ const Fl=(()=>{
     else{const q=.5*uc*uc*C;cl+=.02*(-Fy/q-cl);cd+=.02*(Fx/q-cd);fxF+=.02*(Fx/q-fxF);fyF+=.02*(Fy/q-fyF)}
     if(!isFinite(cl)||!isFinite(cd))restart(wing());
   }
-  const fShow=()=>ramp>=1&&ms>=8&&Math.abs(uc-u0)<.003;      // net force is only meaningful once the flow has settled
+  const fShow=()=>showF&&ramp>=1&&ms>=8&&Math.abs(uc-u0)<.003;      // net force is only meaningful once the flow has settled
   function arrow2(x0,y0,dx,dy){
     const L=Math.hypot(dx,dy);if(L<5)return;const a=Math.atan2(dy,dx),hl=Math.min(18,L*.45),x1=x0+dx,y1=y0+dy;
     const path=()=>{ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(x1,y1);ctx.moveTo(x1,y1);ctx.lineTo(x1-hl*Math.cos(a-.45),y1-hl*Math.sin(a-.45));ctx.moveTo(x1,y1);ctx.lineTo(x1-hl*Math.cos(a+.45),y1-hl*Math.sin(a+.45))};
@@ -475,11 +481,11 @@ const Fl=(()=>{
   }
   function drawForce2D(){                                  // red arrow from the quarter-chord point: lift + drag
     if(!fShow())return;let dx=fxF*110,dy=fyF*110;const L=Math.hypot(dx,dy);if(L>260){dx*=260/L;dy*=260/L}
-    arrow2(X0*SC,Y0*SC,dx,dy);ctx.fillStyle='#ff5a4a';ctx.font='bold 14px "Courier New",monospace';ctx.fillText('net force',X0*SC+dx*.5+6,Y0*SC+dy*.5-8);
+    const ox=curC[0]*SC,oy=curC[1]*SC;arrow2(ox,oy,dx,dy);ctx.fillStyle='#ff5a4a';ctx.font='bold 14px "Courier New",monospace';ctx.fillText('net reaction force',Math.min(ox+dx+12,NX*SC-170),oy+dy+(dy<0?-6:16));
   }
-  function drawForce3D(){
+  function drawForce3D(cx,cy){
     if(!fShow())return;let fx=fxF*45,fy=-fyF*45;const L=Math.hypot(fx,fy);if(L>90){fx*=90/L;fy*=90/L}
-    proj(X0-CX3,0,0);const x0=pr[0],y0=pr[1];proj(X0-CX3+fx,fy,0);arrow2(x0,y0,pr[0]-x0,pr[1]-y0);
+    proj(cx,cy,0);const x0=pr[0],y0=pr[1];proj(cx+fx,cy+fy,0);arrow2(x0,y0,pr[0]-x0,pr[1]-y0);
   }
   const cl01=x=>Math.max(0,Math.min(1,x)),mix=(a,b,t)=>a+(b-a)*t;
   function draw(){
@@ -665,7 +671,7 @@ struct TO{@builtin(position) pos:vec4f,@location(0) col:vec4f};
     G.dev.queue.writeBuffer(G.solid,0,m);
   }
   function buildMesh(w){
-    const hs=gHs(),NSg=GG.NS,secs=[],out=[];
+    const hs=gHs(),NSg=GG.NS,secs=[],out=[];gCen=centroid(sectionG((w.dl+w.dr)/2,w.aoa,GG.MS));
     for(let k=0;k<NSg;k++){const zr=-hs+2*hs*k/(NSg-1);secs.push([sectionG(dAt(w,zr),w.aoa,GG.MS),zr+GG.NZ/2])}
     const V=(p,n,t)=>out.push(p[0],p[1],p[2],n[0],n[1],n[2],t);
     const nrm=(a,b,c)=>{const ux=b[0]-a[0],uy=b[1]-a[1],uz=b[2]-a[2],vx=c[0]-a[0],vy=c[1]-a[1],vz=c[2]-a[2];
@@ -722,17 +728,17 @@ struct TO{@builtin(position) pos:vec4f,@location(0) col:vec4f};
       pp.set([x,y,z,Math.random()*300],p*4);for(let k=0;k<GG.TL;k++)tr.set([x,y,z,1],(p*GG.TL+k)*4)}
     G.dev.queue.writeBuffer(G.ppos,0,pp);G.dev.queue.writeBuffer(G.trail,0,tr);
   }
-  let gF=[0,0,0];
+  let gF=[0,0,0],gCen=[GG.X0,GG.Y0];
   function gReadForce(){                              // read the summed momentum exchange back (async, never blocks drawing)
     G.Fread.mapAsync(GPUMapMode.READ).then(()=>{
       const a=new Int32Array(G.Fread.getMappedRange().slice(0));G.Fread.unmap();G.fBusy=false;
       const k=1e5*GG.STEPS*.5*Math.max(gUc,.02)**2*GG.C*2*gHs();for(let i=0;i<3;i++)gF[i]+=.15*(a[i]/k-gF[i]);
     }).catch(()=>{G.fBusy=false});
   }
-  function gShowF(){return gRamp>=1&&ms>=8&&Math.abs(gUc-u0)<.003&&isFinite(gF[0]+gF[1]+gF[2])}
+  function gShowF(){return showF&&gRamp>=1&&ms>=8&&Math.abs(gUc-u0)<.003&&isFinite(gF[0]+gF[1]+gF[2])}
   function gArrow(){
     let fx=gF[0]*40,fy=gF[1]*40,fz=gF[2]*40;const L=Math.hypot(fx,fy,fz);if(L>60){fx*=60/L;fy*=60/L;fz*=60/L}
-    return[GG.X0,GG.Y0,GG.NZ/2,0,fx,fy,fz,gShowF()?1:0];
+    return[gCen[0],gCen[1],GG.NZ/2,0,fx,fy,fz,gShowF()?1:0];
   }
   function gFrame(step){
     if(!G)return;const dev=G.dev,enc=dev.createCommandEncoder();
@@ -772,11 +778,11 @@ struct TO{@builtin(position) pos:vec4f,@location(0) col:vec4f};
     requestAnimationFrame(gloop);
   }
   const NOTES={
-    speed:'Speed: colour shows how fast the air moves (dark blue slow, yellow fast), with pale smoke pulses bending around the wing. The red arrow is the net force on the wing.',
-    vorticity:'Vorticity: red and blue show where the air spins in opposite directions, picking out the thin layer on the wing and its wake. The red arrow is the net force on the wing.',
-    wind:'Wind: moving streaks (blue slow, white normal, yellow accelerated) show where the wind is deflected. The red arrow is the net force on the wing.',
-    '3d':'3D: your wing with a smooth skin blending the left and right servo angles, in the 2D airflow stretched across it. Drag to rotate, scroll to zoom; the red arrow is the net force.',
-    gpu:'3D (GPU): a real 3D airflow simulation on your graphics card, with the skin blending smoothly from the left servo angle to the right. Drag to rotate, scroll to zoom; the red arrow is the net force.'};
+    speed:'Speed: colour shows how fast the air moves (dark blue slow, yellow fast), with pale smoke pulses bending around the wing. The red arrow is the net reaction force, showing which way lift is produced.',
+    vorticity:'Vorticity: red and blue show where the air spins in opposite directions, picking out the thin layer on the wing and its wake. The red arrow is the net reaction force, showing which way lift is produced.',
+    wind:'Wind: moving streaks (blue slow, white normal, yellow accelerated) show where the wind is deflected. The red arrow is the net reaction force, showing which way lift is produced.',
+    '3d':'3D: your wing with a smooth skin blending the left and right servo angles, in the 2D airflow stretched across it. Drag to rotate, scroll to zoom; the red arrow is the net reaction force.',
+    gpu:'3D (GPU): a real 3D airflow simulation on your graphics card, with the skin blending smoothly from the left servo angle to the right. Drag to rotate, scroll to zoom; the red arrow is the net reaction force.'};
   const NEXT={speed:'vorticity',vorticity:'wind',wind:'3d','3d':'gpu',gpu:'speed'},LABEL={'3d':'3D',gpu:'3D (GPU)'};
   function setView(v){
     const prev=view;view=v;
@@ -795,6 +801,8 @@ struct TO{@builtin(position) pos:vec4f,@location(0) col:vec4f};
     $('#flowBtn').onclick=()=>{on=!on;$('#flowBtn').textContent=on?'Stop simulation':'Run simulation';$('#flowBtn').classList.toggle('on',on);
       if(on){if(view==='gpu'){if(G){gReset();requestAnimationFrame(gloop)}}else{restart(wing());requestAnimationFrame(loop)}}else $('#flowLoad').classList.remove('show')};
     $('#flowMode').onclick=()=>setView(NEXT[view]);
+    $('#flowForce').onclick=()=>{showF=!showF;$('#flowForce').textContent='Reaction force: '+(showF?'on':'off');$('#flowForce').classList.toggle('on',showF);
+      if(!on){if(view==='gpu'){if(G)gFrame(false)}else{view==='3d'?draw3D():draw()}}};
     let drag=false,lx=0,ly=0;
     cv.addEventListener('pointerdown',e=>{if(view!=='3d')return;drag=true;lx=e.clientX;ly=e.clientY;cv.setPointerCapture(e.pointerId);cv.style.cursor='grabbing'});
     cv.addEventListener('pointermove',e=>{if(!drag||view!=='3d')return;
