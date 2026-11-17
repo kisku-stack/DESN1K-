@@ -91,7 +91,7 @@ body.hacked #hack{display:flex;animation:glitch .25s steps(2) infinite}
   <div class="toast" id="toast"></div>
   <div class="ana" id="anaBox" style="display:none"><b>Analogue channel active</b> <span id="potV">0</span>/1023
     <div class="sl" style="margin:8px 0"><input type="range" id="pot" min="0" max="1023" value="512"></div>
-    <div class="sub" id="potNote"></div><button id="flip">Roll offset (button)</button></div>
+    <div class="sub" id="potNote"></div><button id="flip">Button: pot controls vertical</button></div>
 
   <div class="mode" id="aoaBox"><header>Angle of attack <span id="aoaV">0°</span></header>
     <div class="sl" style="margin-top:8px"><input type="range" id="aoa" min="-15" max="15" value="0"></div></div>
@@ -151,6 +151,7 @@ const skinW=t=>{const k=Math.max(.05,CFG.skin);return Math.max(0,Math.min(1,(t+k
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const S={mode:1,src:'D',smooth:true,hacked:false,disco:false,conn:false,pot:512,inv:false,lastT:0};
 const A={l:0,r:0}; let port,writer,logoClicks=0;
+const AN={vv:0,rv:0,base:0,pb:512};   // simulated analogue: vertical / roll values (-1..1), value when the pot took over, pot then
 const isLive=()=>S.conn&&performance.now()-S.lastT<600; // real telemetry arriving
 const mid=()=>(CFG.minA+CFG.maxA)/2, span=()=>CFG.maxA-CFG.minA;
 const pct=a=>(a-CFG.minA)/span()*100;
@@ -221,7 +222,8 @@ function render(){
   $('#anaBox').style.display=S.src==='A'?'block':'none';
   $('#pot').disabled=lv;if(lv)$('#pot').value=S.pot;$('#potV').textContent=S.pot;
   $('#flip').style.display=lv?'none':'inline-block';
-  $('#potNote').textContent=(lv?'Reading the real potentiometer. Press the physical button to toggle the roll offset.':'No live Arduino telemetry: drag this slider to simulate the potentiometer.')+(S.inv?' Roll offset on.':'');
+  $('#potNote').textContent=(lv?'Reading the real potentiometer. Press the physical button to switch it between vertical and roll.':'No live Arduino telemetry: drag this slider to simulate the potentiometer.')+(S.inv?' The pot now controls roll.':' The pot now controls vertical.');
+  $('#flip').textContent=S.inv?'Button: pot controls roll':'Button: pot controls vertical';
   $$('.mode[data-m]').forEach(m=>{const on=+m.dataset.m===S.mode;m.classList.toggle('act',on);m.classList.toggle('off',!on)});
   $('#srcD').classList.toggle('on',S.src==='D');$('#srcA').classList.toggle('on',S.src==='A');
   $('#ctrl').classList.toggle('locked',S.src==='A'||S.hacked);
@@ -239,6 +241,7 @@ function render(){
 
 function setSrc(s,quiet){
   S.src=s;send('SRC,'+(s==='A'?1:0));
+  if(s==='A'){AN.vv=AN.rv=AN.base=0;AN.pb=S.pot;S.inv=false}
   if(!quiet)toast(s==='A'?'Analogue channel active':'Digital channel active');render();
 }
 function setMode(m){if(S.src==='A'||S.hacked)return;S.mode=m;send('M,'+m);render()}
@@ -259,7 +262,7 @@ $('#logo').onclick=()=>{if(++logoClicks>=5){logoClicks=0;setDisco(!S.disco)}};
 $('#hackBtn').onclick=()=>{S.hacked=true;document.body.classList.add('hacked');send('ALERT,1');setSrc('A',true);render()};
 $('#restore').onclick=()=>{S.hacked=false;document.body.classList.remove('hacked');send('ALERT,0');setSrc('D');};
 
-$('#flip').onclick=()=>{S.inv=!S.inv;render()};
+$('#flip').onclick=()=>{S.inv=!S.inv;AN.base=S.inv?AN.rv:AN.vv;AN.pb=S.pot;render()};   // switch the pot between vertical and roll; nothing resets
 // ---- Web Serial ----
 $('#connect').onclick=async()=>{
   if(!('serial' in navigator)){toast('Use Chrome or Edge for USB link');return}
@@ -292,7 +295,8 @@ function telemetry(l){
 let t0=performance.now();
 setInterval(()=>{
   const t=(performance.now()-t0)/1000;let[tl,tr]=target();
-  if(S.src==='A'){const a=CFG.minA+S.pot/1023*span(),d=S.inv?CFG.rollDiff/2:0,cl=x=>Math.max(CFG.minA,Math.min(CFG.maxA,x));tl=cl(a+d);tr=cl(a-d)}
+  if(S.src==='A'){const v=Math.max(-1,Math.min(1,AN.base+(S.pot-AN.pb)/512));if(S.inv)AN.rv=v;else AN.vv=v;
+    const half=span()/2,d=AN.rv*CFG.rollDiff/2,c=mid()+AN.vv*(half-Math.abs(d));tl=c+d;tr=c-d}
   if(S.disco){const s=Math.sin(t*2.5);tl=mid()+s*span()/2;tr=mid()-s*span()/2}
   if(S.conn&&S.src==='D'&&!S.hacked&&!S.disco)send(`D,${Math.round(tl)},${Math.round(tr)}`);
   if(!isLive()){ // simulation
@@ -474,18 +478,25 @@ const Fl=(()=>{
     if(!isFinite(cl)||!isFinite(cd))restart(wing());
   }
   const fShow=()=>showF&&ramp>=1&&ms>=8&&Math.abs(uc-u0)<.003;      // net force is only meaningful once the flow has settled
-  function arrow2(x0,y0,dx,dy){
-    const L=Math.hypot(dx,dy);if(L<5)return;const a=Math.atan2(dy,dx),hl=Math.min(18,L*.45),x1=x0+dx,y1=y0+dy;
+  function arrow2(x0,y0,dx,dy,col){
+    const L=Math.hypot(dx,dy);if(L<2)return;const a=Math.atan2(dy,dx),hl=Math.min(18,L*.45),x1=x0+dx,y1=y0+dy;
     const path=()=>{ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(x1,y1);ctx.moveTo(x1,y1);ctx.lineTo(x1-hl*Math.cos(a-.45),y1-hl*Math.sin(a-.45));ctx.moveTo(x1,y1);ctx.lineTo(x1-hl*Math.cos(a+.45),y1-hl*Math.sin(a+.45))};
-    ctx.lineCap='round';ctx.lineJoin='round';path();ctx.lineWidth=7;ctx.strokeStyle='#1d1c19';ctx.stroke();path();ctx.lineWidth=4;ctx.strokeStyle='#ff5a4a';ctx.stroke();
+    ctx.lineCap='round';ctx.lineJoin='round';path();ctx.lineWidth=7;ctx.strokeStyle='#1d1c19';ctx.stroke();path();ctx.lineWidth=4;ctx.strokeStyle=col;ctx.stroke();
   }
-  function drawForce2D(){                                  // red arrow from the quarter-chord point: lift + drag
-    if(!fShow())return;let dx=fxF*110,dy=fyF*110;const L=Math.hypot(dx,dy);if(L>260){dx*=260/L;dy*=260/L}
-    const ox=curC[0]*SC,oy=curC[1]*SC;arrow2(ox,oy,dx,dy);ctx.fillStyle='#ff5a4a';ctx.font='bold 14px "Courier New",monospace';ctx.fillText('net reaction force',Math.min(ox+dx+12,NX*SC-170),oy+dy+(dy<0?-6:16));
+  const CX='#5ab4ff',CY='#ff5a4a',CZ='#6bdc6b';           // horizontal (drag), vertical (lift), sideways
+  function drawForce2D(){                                  // net reaction force split into its components, from the wing centre
+    if(!fShow())return;const K=140,cap=260,lim=v=>Math.max(-cap,Math.min(cap,v));
+    const dx=lim(fxF*K),dy=lim(fyF*K),ox=curC[0]*SC,oy=curC[1]*SC;
+    arrow2(ox,oy,dx,0,CX);arrow2(ox,oy,0,dy,CY);
+    ctx.font='bold 14px "Courier New",monospace';
+    ctx.fillStyle=CX;ctx.fillText(`horizontal ${fxF.toFixed(2)}`,ox+dx+(dx<0?-150:10),oy+(dy<0?18:-8));
+    ctx.fillStyle=CY;ctx.fillText(`vertical ${(-fyF).toFixed(2)}`,ox+8,oy+dy+(dy<0?-8:18));
   }
   function drawForce3D(cx,cy){
-    if(!fShow())return;let fx=fxF*45,fy=-fyF*45;const L=Math.hypot(fx,fy);if(L>90){fx*=90/L;fy*=90/L}
-    proj(cx,cy,0);const x0=pr[0],y0=pr[1];proj(cx+fx,cy+fy,0);arrow2(x0,y0,pr[0]-x0,pr[1]-y0);
+    if(!fShow())return;const K=55,cap=90,lim=v=>Math.max(-cap,Math.min(cap,v)),fx=lim(fxF*K),fy=lim(-fyF*K);
+    proj(cx,cy,0);const x0=pr[0],y0=pr[1];
+    proj(cx+fx,cy,0);arrow2(x0,y0,pr[0]-x0,pr[1]-y0,CX);
+    proj(cx,cy+fy,0);arrow2(x0,y0,pr[0]-x0,pr[1]-y0,CY);
   }
   const cl01=x=>Math.max(0,Math.min(1,x)),mix=(a,b,t)=>a+(b-a)*t;
   function draw(){
@@ -632,15 +643,21 @@ struct TO{@builtin(position) pos:vec4f,@location(0) col:vec4f};
   var o:TO; o.pos=proj(t.xyz); o.col=vec4f(c,a); return o; }
 @fragment fn fs(i:TO)->@location(0) vec4f{ return i.col; }`;
   const WG_ARROW=`
-@vertex fn vs(@builtin(vertex_index) vi:u32)->@builtin(position) vec4f{
-  if(U.f.w<0.5){return vec4f(2.0,2.0,2.0,1.0);}
-  let base=U.b.xyz; let L=length(U.f.xyz); let tip=base+U.f.xyz;
-  var dir=vec3f(1.0,0.0,0.0); if(L>0.001){dir=U.f.xyz/L;}
+struct AO{@builtin(position) pos:vec4f,@location(0) col:vec4f};
+@vertex fn vs(@builtin(vertex_index) vi:u32,@builtin(instance_index) ii:u32)->AO{
+  var o:AO; o.col=vec4f(1.0,0.35,0.29,1.0); o.pos=vec4f(2.0,2.0,2.0,1.0);
+  if(U.f.w<0.5){return o;}
+  var v=vec3f(0.0);
+  if(ii==0u){v=vec3f(U.f.x,0.0,0.0); o.col=vec4f(0.35,0.7,1.0,1.0);}
+  else if(ii==1u){v=vec3f(0.0,U.f.y,0.0); o.col=vec4f(1.0,0.35,0.29,1.0);}
+  else{v=vec3f(0.0,0.0,U.f.z); o.col=vec4f(0.42,0.86,0.42,1.0);}
+  let L=length(v); if(L<0.5){return o;}
+  let base=U.b.xyz; let tip=base+v; let dir=v/L;
   var rf=vec3f(0.0,0.0,1.0); if(abs(dir.z)>0.9){rf=vec3f(0.0,1.0,0.0);}
   let pp=normalize(cross(dir,rf)); let hl=min(6.0,L*0.4);
   var pts=array<vec3f,6>(base,tip,tip,tip-dir*hl+pp*hl*0.45,tip,tip-dir*hl-pp*hl*0.45);
-  return proj(pts[vi]); }
-@fragment fn fs()->@location(0) vec4f{ return vec4f(1.0,0.35,0.29,1.0); }`;
+  o.pos=proj(pts[vi]); return o; }
+@fragment fn fs(i:AO)->@location(0) vec4f{ return i.col; }`;
   const WG_BOX=`
 @vertex fn vs(@builtin(vertex_index) vi:u32)->@builtin(position) vec4f{
   let e=vi/2u; let end=f32(vi%2u); let a=e/4u; let c=e%4u; let b0=f32(c&1u); let b1=f32((c>>1u)&1u);
@@ -761,7 +778,7 @@ struct TO{@builtin(position) pos:vec4f,@location(0) col:vec4f};
     r.setPipeline(G.boxP);r.setBindGroup(0,G.bgBox);r.draw(24);
     r.setPipeline(G.wingP);r.setBindGroup(0,G.bgWing);r.setVertexBuffer(0,G.wingVB);r.draw(G.wingN||0);
     r.setPipeline(G.trailP);r.setBindGroup(0,G.bgTrail);r.draw(GG.NP*(GG.TL-1)*2);
-    r.setPipeline(G.arrowP);r.setBindGroup(0,G.bgArrow);r.draw(6);
+    r.setPipeline(G.arrowP);r.setBindGroup(0,G.bgArrow);r.draw(6,3);
     r.end();const doRead=step&&!G.fBusy;if(doRead)G.fBusy=true;dev.queue.submit([enc.finish()]);if(doRead)gReadForce();
   }
   function gloop(){
@@ -774,15 +791,15 @@ struct TO{@builtin(position) pos:vec4f,@location(0) col:vec4f};
     $('#flowLoad').classList.toggle('show',wait);
     gFrame(!wait);
     gFps=gFps*.9+(1000/Math.max(1,now-gT))*.1;gT=now;
-    $('#flowRead').textContent=`GPU 3D | grid ${GG.NX}x${GG.NY}x${GG.NZ} | sim Re ≈ ${Math.round(u0*GG.C/((GG.TAU-.5)/3))} | ${gFps.toFixed(0)} fps | `+(gRamp<1?'flow starting up…':Math.abs(gUc-u0)<.003?(gShowF()?`Cl ${gF[1].toFixed(2)} | Cd ${gF[0].toFixed(2)}`:'steady'):'adjusting to new speed…');
+    $('#flowRead').textContent=`GPU 3D | grid ${GG.NX}x${GG.NY}x${GG.NZ} | sim Re ≈ ${Math.round(u0*GG.C/((GG.TAU-.5)/3))} | ${gFps.toFixed(0)} fps | `+(gRamp<1?'flow starting up…':Math.abs(gUc-u0)<.003?(gShowF()?`vertical ${gF[1].toFixed(2)} | horizontal ${gF[0].toFixed(2)} | sideways ${gF[2].toFixed(2)}`:'steady'):'adjusting to new speed…');
     requestAnimationFrame(gloop);
   }
   const NOTES={
-    speed:'Speed: colour shows how fast the air moves (dark blue slow, yellow fast), with pale smoke pulses bending around the wing. The red arrow is the net reaction force, showing which way lift is produced.',
-    vorticity:'Vorticity: red and blue show where the air spins in opposite directions, picking out the thin layer on the wing and its wake. The red arrow is the net reaction force, showing which way lift is produced.',
-    wind:'Wind: moving streaks (blue slow, white normal, yellow accelerated) show where the wind is deflected. The red arrow is the net reaction force, showing which way lift is produced.',
-    '3d':'3D: your wing with a smooth skin blending the left and right servo angles, in the 2D airflow stretched across it. Drag to rotate, scroll to zoom; the red arrow is the net reaction force.',
-    gpu:'3D (GPU): a real 3D airflow simulation on your graphics card, with the skin blending smoothly from the left servo angle to the right. Drag to rotate, scroll to zoom; the red arrow is the net reaction force.'};
+    speed:'Speed: colour shows how fast the air moves (dark blue slow, yellow fast), with pale smoke pulses bending around the wing. Arrows show the net reaction force by component: blue horizontal (drag), red vertical (lift).',
+    vorticity:'Vorticity: red and blue show where the air spins in opposite directions, picking out the thin layer on the wing and its wake. Arrows show the net reaction force by component: blue horizontal (drag), red vertical (lift).',
+    wind:'Wind: moving streaks (blue slow, white normal, yellow accelerated) show where the wind is deflected. Arrows show the net reaction force by component: blue horizontal (drag), red vertical (lift).',
+    '3d':'3D: your wing with a smooth skin blending the left and right servo angles, in the 2D airflow stretched across it. Drag to rotate, scroll to zoom; arrows show the net reaction force by component (blue horizontal, red vertical).',
+    gpu:'3D (GPU): a real 3D airflow simulation on your graphics card, with the skin blending smoothly from the left servo angle to the right. Drag to rotate, scroll to zoom; arrows show the net reaction force by component (blue horizontal, red vertical, green sideways).'};
   const NEXT={speed:'vorticity',vorticity:'wind',wind:'3d','3d':'gpu',gpu:'speed'},LABEL={'3d':'3D',gpu:'3D (GPU)'};
   function setView(v){
     const prev=view;view=v;
