@@ -60,6 +60,22 @@ body.hacked #hack{display:flex;animation:glitch .25s steps(2) infinite}
 #flowLoad.show{display:flex}
 .lbar{width:220px;height:8px;border:1px solid var(--paper);margin:10px auto 0}
 .lbar i{display:block;height:100%;width:0;background:var(--led)}
+
+#smoke{display:none;position:fixed;inset:0;z-index:50;opacity:0;transition:opacity .9s ease;background:#05070a;cursor:none}
+#smoke.show{opacity:1}
+#smokeCv{position:absolute;inset:0;width:100%;height:100%;display:block}
+#smokeScan{position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(0,0,0,.3) 0 1px,transparent 1px 3px);box-shadow:inset 0 0 180px 50px #000}
+#smokeTxt{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);font:bold clamp(28px,7vw,84px)/1 "Courier New",monospace;letter-spacing:.12em;color:#e6dec5;text-shadow:0 0 18px #00a0ff88;animation:txtGlitch 2.4s steps(1) infinite;white-space:nowrap}
+#smokeTxt::before,#smokeTxt::after{content:attr(data-t);position:absolute;left:0;top:0;width:100%;overflow:hidden}
+#smokeTxt::before{color:#ff2d55;animation:txtA 1.7s steps(1) infinite}
+#smokeTxt::after{color:#00e5ff;animation:txtB 2.1s steps(1) infinite}
+#smokeSub{position:absolute;left:0;right:0;bottom:7%;text-align:center;font:14px "Courier New",monospace;color:#8a8266;letter-spacing:.3em;text-transform:uppercase;animation:blink 1.2s steps(2) infinite}
+@keyframes txtGlitch{0%,91%,100%{transform:translate(-50%,-50%)}92%{transform:translate(-47%,-52%) skewX(9deg)}94%{transform:translate(-53%,-49%)}96%{transform:translate(-50%,-50%) skewX(-7deg)}}
+@keyframes txtA{0%,100%{clip-path:inset(0 0 60% 0);transform:translate(-4px,0)}20%{clip-path:inset(30% 0 40% 0);transform:translate(-10px,2px)}45%{clip-path:inset(10% 0 70% 0);transform:translate(5px,-1px)}70%{clip-path:inset(60% 0 10% 0);transform:translate(-7px,0)}}
+@keyframes txtB{0%,100%{clip-path:inset(55% 0 0 0);transform:translate(4px,0)}25%{clip-path:inset(15% 0 55% 0);transform:translate(9px,-2px)}50%{clip-path:inset(70% 0 5% 0);transform:translate(-5px,1px)}75%{clip-path:inset(35% 0 35% 0);transform:translate(7px,0)}}
+@keyframes blink{50%{opacity:.25}}
+.glitchOut{animation:pageGlitch .7s steps(1) forwards}
+@keyframes pageGlitch{0%{transform:none;filter:none}10%{transform:translate(-8px,2px);filter:hue-rotate(90deg) saturate(3)}20%{transform:translate(10px,-3px) skewX(4deg);filter:invert(1)}30%{transform:translate(-4px,5px);filter:hue-rotate(200deg)}45%{transform:translate(6px,0) scaleY(1.03);filter:contrast(2)}60%{transform:translate(-12px,1px);filter:hue-rotate(300deg) saturate(4)}80%{transform:translate(3px,-2px);filter:blur(2px)}100%{transform:none;filter:none}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important}}
 </style></head><body>
 <div class="wrap" id="app">
@@ -130,6 +146,7 @@ body.hacked #hack{display:flex;animation:glitch .25s steps(2) infinite}
 </div>
 </div>
 
+<div id="smoke" aria-hidden="true"><canvas id="smokeCv"></canvas><div id="smokeScan"></div><div id="smokeTxt" data-t="SIGNAL LOST">SIGNAL LOST</div><div id="smokeSub">press P to restore</div></div>
 <button id="hackBtn" title="Compromise">!</button>
 <div id="hack"><h2>CONTROL LINK COMPROMISED</h2><div>Digital channel locked by unknown party.<br>Fall back to analogue controls.</div><button id="restore">Restore link</button></div>
 
@@ -847,5 +864,55 @@ struct AO{@builtin(position) pos:vec4f,@location(0) col:vec4f};
   }
   return{restart,wing};
 })();
+// ---- secret: press P for a glitchy smoke screen, press P again to bring the page back ----
+(()=>{
+  const ov=$('#smoke'),cvs=$('#smokeCv'),cx=cvs.getContext('2d'),txt=$('#smokeTxt'),wrap=$('.wrap'),BASE='SIGNAL LOST',GLY='\u2593\u2592\u2591\u2588#%&@/';
+  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let on=false,raf=0,t0=0,W=0,H=0,bw=0,bh=0,A,B,ac,bc,hideT=0,flash=false;
+  const mk=()=>{const c=document.createElement('canvas');c.width=bw;c.height=bh;return c};
+  function size(){
+    W=cvs.width=innerWidth;H=cvs.height=innerHeight;bw=Math.max(80,W>>2);bh=Math.max(60,H>>2);
+    A=mk();B=mk();ac=A.getContext('2d');bc=B.getContext('2d');ac.fillStyle=bc.fillStyle='#000';ac.fillRect(0,0,bw,bh);bc.fillRect(0,0,bw,bh);
+  }
+  function puff(c,x,y,r,rgb,a){const g=c.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,`rgba(${rgb},${a})`);g.addColorStop(1,`rgba(${rgb},0)`);c.fillStyle=g;c.fillRect(x-r,y-r,2*r,2*r)}
+  function frame(now){
+    if(!raf)return;
+    const t=(now-t0)/1000,burst=!reduce&&(Math.sin(t*1.7)>.88||Math.random()<.01),split=burst?6+Math.random()*10:1.6;
+    // smoke: feed the last frame back slightly zoomed, swirled and lifted, then add new coloured puffs (colour offset = RGB split)
+    bc.globalCompositeOperation='source-over';bc.fillStyle='#000';bc.fillRect(0,0,bw,bh);
+    bc.save();bc.globalAlpha=.955;bc.translate(bw/2,bh/2);bc.rotate(.007*Math.sin(t*.5));bc.scale(1.012,1.012);bc.translate(-bw/2+Math.sin(t*.4)*.7,-bh/2-1.4);bc.drawImage(A,0,0);bc.restore();
+    bc.globalCompositeOperation='lighter';
+    for(let i=0;i<12;i++){
+      const ph=i*1.7+t*.6,x=bw*(.5+.48*Math.sin(ph*.9+i)),y=bh*(.6+.4*Math.sin(ph*.55+i*2.3))+Math.random()*bh*.15-bh*.05,r=10+Math.random()*26,a=.016;
+      puff(bc,x-split,y,r,'255,60,90',a);puff(bc,x,y,r,'60,255,150',a);puff(bc,x+split,y,r,'60,130,255',a);
+    }
+    [A,B]=[B,A];[ac,bc]=[bc,ac];
+    cx.globalCompositeOperation='source-over';cx.imageSmoothingEnabled=true;cx.drawImage(A,0,0,W,H);
+    if(!reduce){                                           // glitch: displaced slices, bright bars, the odd inverted frame
+      const n=burst?10:(Math.random()<.15?2:0);
+      for(let i=0;i<n;i++){const sy=Math.random()*H,sh=4+Math.random()*(burst?90:30),dx=(Math.random()-.5)*(burst?260:60);cx.drawImage(cvs,0,sy,W,sh,dx,sy,W,sh)}
+      if(burst){cx.fillStyle=Math.random()<.5?'rgba(255,255,255,.07)':'rgba(0,229,255,.09)';cx.fillRect(0,Math.random()*H,W,2+Math.random()*7)}
+      if(Math.random()<.012){cx.globalCompositeOperation='difference';cx.fillStyle='#fff';cx.fillRect(0,0,W,H);cx.globalCompositeOperation='source-over'}
+    }
+    raf=requestAnimationFrame(frame);
+  }
+  function pageGlitch(){wrap.classList.remove('glitchOut');void wrap.offsetWidth;wrap.classList.add('glitchOut')}
+  wrap.addEventListener('animationend',()=>wrap.classList.remove('glitchOut'));
+  function toggle(){
+    on=!on;clearTimeout(hideT);pageGlitch();
+    if(on){size();ov.style.display='block';void ov.offsetWidth;ov.classList.add('show');t0=performance.now();if(!raf)raf=requestAnimationFrame(frame)}
+    else{ov.classList.remove('show');hideT=setTimeout(()=>{if(!on){cancelAnimationFrame(raf);raf=0;ov.style.display='none'}},950)}
+  }
+  setInterval(()=>{if(!on||reduce||Math.random()>.25)return;const a=BASE.split('');for(let k=0;k<2;k++)a[Math.random()*a.length|0]=GLY[Math.random()*GLY.length|0];
+    txt.textContent=txt.dataset.t=a.join('');setTimeout(()=>{txt.textContent=txt.dataset.t=BASE},90)},140);
+  addEventListener('resize',()=>{if(on)size()});
+  addEventListener('keydown',e=>{
+    if(e.repeat||e.ctrlKey||e.metaKey||e.altKey||(e.key!=='p'&&e.key!=='P'))return;
+    const el=document.activeElement;                       // don't steal the key while typing in a text or number box
+    if(el&&(el.isContentEditable||el.tagName==='TEXTAREA'||el.tagName==='SELECT'||(el.tagName==='INPUT'&&!['range','checkbox','radio','button'].includes(el.type))))return;
+    toggle();
+  });
+})();
+
 render();
 </script></body></html>
