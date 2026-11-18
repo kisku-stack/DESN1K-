@@ -168,7 +168,7 @@ CFG.pivot=CFG.pivotMM/CFG.chord;CFG.hinge=CFG.hingeMM/CFG.chord;   // as fractio
 // weight 0 (left servo) .. 1 (right servo) at span position t in [-1,1], continuous because of the skin
 const skinW=t=>{const k=Math.max(.05,CFG.skin);return Math.max(0,Math.min(1,(t+k)/(2*k)))};
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-const S={mode:1,src:'D',smooth:true,hacked:false,disco:false,conn:false,pot:512,inv:false,lastT:0};
+const S={mode:1,src:'D',smooth:true,hacked:false,disco:false,conn:false,pot:512,inv:false,lastT:0,idle:false,lastAct:performance.now()};
 const A={l:0,r:0}; let port,writer,logoClicks=0;
 const AN={vv:0,rv:0,base:0,pb:512};   // simulated analogue: vertical / roll values (-1..1), value when the pot took over, pot then
 const isLive=()=>S.conn&&performance.now()-S.lastT<600; // real telemetry arriving
@@ -223,9 +223,17 @@ function drawAirfoil(avg,aoa){
   $('#tilt').textContent=sg((-a.phi).toFixed(1))+'° AoA';
 }
 
+// LED colours: each state is a clearly different colour (match updateLed() in the Arduino sketch)
+// show palette, same order as paletteColor() in the Arduino sketch: red, yellow, green, cyan, blue, magenta, white
+const LED_PAL=['#ff0000','#ffe000','#00ff00','#00ffff','#0000ff','#ff00ff','#ffffff'],IDLE_MS=10000;
+const isIdleNow=()=>!S.hacked&&!S.disco&&(isLive()?S.idle:performance.now()-S.lastAct>IDLE_MS);
 function ledColor(){
-  if(S.hacked)return'#ff0000';if(S.disco)return'#ff00ff';if(S.src==='A')return'#ff6e00';
-  return{1:'#00a0ff',2:'#00ff3c',3:'#dc00b4'}[S.mode];
+  const t=performance.now();
+  if(S.hacked)return'#ff0000';
+  if(S.disco)return t%80<60?LED_PAL[(Math.floor(t/80)*3)%7]:'#111';     // disco: fast strobe, jumping between colours
+  if(isIdleNow())return t%180<150?LED_PAL[Math.floor(t/180)%7]:'#111';  // idle: light show through every colour
+  if(S.src==='A')return S.inv?'#ffffff':'#ff0000';       // analogue: white = pot controls roll, red = pot controls vertical
+  return{1:'#0000ff',2:'#00ff00',3:'#ff00ff'}[S.mode];   // digital: blue / green / purple-magenta
 }
 function ghosts(){
   const pos=u=>(u+100)/2,uL=angleToU(A.l),uR=angleToU(A.r),[tl,tr]=target();
@@ -252,7 +260,7 @@ function render(){
   $('#v3').textContent=`${sg($('#sl').value)}% / ${sg($('#sr').value)}%`;$('#aoaV').textContent=sg($('#aoa').value)+'°';
   $('#lr').textContent=`${Math.round(A.l)}° / ${Math.round(A.r)}°`;
   const c=ledColor();$('#led').style.background=c;$('#led').style.boxShadow=`0 0 12px ${c}`;
-  $('#ledTxt').textContent=S.hacked?'ALERT':S.disco?'DISCO':S.src==='A'?'ANALOGUE':['','ROLL','MORPH','INDEP'][S.mode];
+  $('#ledTxt').textContent=S.hacked?'ALERT':S.disco?'DISCO':isIdleNow()?'IDLE SHOW':S.src==='A'?(S.inv?'ANALOGUE ROLL':'ANALOGUE VERT'):['','ROLL','MORPH','INDEP'][S.mode];
   $('#rollTxt').textContent=CFG.rollDiff;
   drawAirfoil((A.l+A.r)/2,+$('#aoa').value);
   const tilt=(A.l-A.r)/span()*30;
@@ -288,6 +296,7 @@ $('#hackBtn').onclick=()=>{S.hacked=true;document.body.classList.add('hacked');s
 $('#restore').onclick=()=>{S.hacked=false;document.body.classList.remove('hacked');send('ALERT,0');setSrc('D');};
 
 $('#flip').onclick=()=>{S.inv=!S.inv;AN.base=S.inv?AN.rv:AN.vv;AN.pb=S.pot;render()};   // switch the pot between vertical and roll; nothing resets
+['pointerdown','keydown','input'].forEach(ev=>document.addEventListener(ev,()=>{S.lastAct=performance.now()}));   // any use of the page ends the idle show
 // ---- Web Serial ----
 $('#connect').onclick=async()=>{
   if(!('serial' in navigator)){toast('Use Chrome or Edge for USB link');return}
@@ -312,6 +321,7 @@ function telemetry(l){
   // only react when the Arduino's flag CHANGES (physical switch), so it can't fight the UI button
   if(an!==lastAn&&an!==S.src&&!S.hacked){S.src=an;toast(an==='A'?'Analogue override detected':'')}
   lastAn=an;
+  S.idle=!!+p[7];
   const d=!!+p[6];if(d!==S.disco){S.disco=d;document.body.classList.toggle('disco',d)}
   render();
 }
