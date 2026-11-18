@@ -141,11 +141,12 @@ const CFG={minA:0,maxA:60,aoaMin:-15,aoaMax:15,
   rollDiff:25,    // deg: max difference between left and right wing in roll (match ROLL_DIFF in the Arduino sketch)
   skin:1,         // how far the skin blends left->right servo angle: 1 = smoothly across the whole span, 0.12 = abrupt step at the middle
   thick:13,       // NACA 0013 -> 19.5 mm thick
-  pivot:0.30,     // mounting hole at 45 mm / 150 mm
-  hinge:0.333,    // 50 mm from leading edge / 150 mm chord
+  pivotMM:40,     // heat insert centre: mm from the leading edge (the wing turns about this point for angle of attack)
+  hingeMM:50,     // hinge line: mm from the leading edge
   maxDefl:25,     // trailing-edge deflection (deg) at either servo limit (CHECK)
   neutral:null,   // servo angle where the wing is flat (null = middle of min/max)
   dir:1};         // set to -1 if a HIGHER servo angle moves the trailing edge UP
+CFG.pivot=CFG.pivotMM/CFG.chord;CFG.hinge=CFG.hingeMM/CFG.chord;   // as fractions of the chord (40/150 = 0.267, 50/150 = 0.333)
 // ====================================
 // weight 0 (left servo) .. 1 (right servo) at span position t in [-1,1], continuous because of the skin
 const skinW=t=>{const k=Math.max(.05,CFG.skin);return Math.max(0,Math.min(1,(t+k)/(2*k)))};
@@ -196,7 +197,7 @@ function drawAirfoil(avg,aoa){
   $('#af').setAttribute('d','M'+up.map(P).join('L')+'L'+lo.reverse().map(P).join('L')+'Z');
   $('#hingeDot').setAttribute('cx',X+CFG.hinge*SC);$('#hingeDot').setAttribute('cy',95);
   $('#pivotDot').setAttribute('cx',X+CFG.pivot*SC);$('#pivotDot').setAttribute('cy',95);
-  $('#afGroup').setAttribute('transform',`rotate(${aoa} ${X+SC*.25} 95)`);
+  $('#afGroup').setAttribute('transform',`rotate(${aoa} ${X+SC*CFG.pivot} 95)`);
   const a=analyse(d),mm=Math.abs(a.m),tt=String(Math.round(a.t)).padStart(2,'0');
   $('#naca').textContent=mm<0.05?'NACA 00'+tt:Math.round(mm)>9?'beyond 4-digit range':(a.m<0?'inverted ':'')+'NACA '+Math.round(mm)+Math.round(a.p/10)+tt;
   $('#camb').textContent=mm<0.05?'0%':`${a.m.toFixed(1)}% @ ${Math.round(a.p)}%c`;
@@ -332,7 +333,7 @@ const Fl=(()=>{
   function wing(){const d=-angleToU((A.l+A.r)/2)/100*CFG.maxDefl*Math.PI/180,aoa=+$('#aoa').value;
     return{d,aoa,s:Math.round(d*360/Math.PI)+','+aoa}}
   function poly(d,aoa){
-    const a=aoa*Math.PI/180,q=.25,M=80,up=[],lo=[];
+    const a=aoa*Math.PI/180,q=CFG.pivot,M=80,up=[],lo=[];
     const pt=(x,y)=>{const[X,Y]=deform(x,y,d),dx=X-q;return[X0+(q+dx*Math.cos(a)+Y*Math.sin(a))*C,Y0-(-dx*Math.sin(a)+Y*Math.cos(a))*C]};
     for(let i=0;i<=M;i++){const x=(1-Math.cos(i/M*Math.PI))/2;up.push(pt(x,yt(x)));lo.push(pt(x,-yt(x)))}
     return up.concat(lo.reverse());
@@ -399,7 +400,7 @@ const Fl=(()=>{
     pr[0]=NX*SC/2+X*k;pr[1]=NY*SC/2-Y*k;pr[2]=Z;pr[3]=X;pr[4]=Y;
   }
   function section(d,aoa){                              // wing cross-section in scene coords (cells, y up)
-    const a=aoa*Math.PI/180,q=.25,up=[],lo=[];
+    const a=aoa*Math.PI/180,q=CFG.pivot,up=[],lo=[];
     const pt=(x,y)=>{const[X,Y]=deform(x,y,d),dx=X-q;return[(q+dx*Math.cos(a)+Y*Math.sin(a))*C+X0-CX3,(-dx*Math.sin(a)+Y*Math.cos(a))*C]};
     for(let i=0;i<=MS;i++){const x=(1-Math.cos(i/MS*Math.PI))/2;up.push(pt(x,yt(x)));lo.push(pt(x,-yt(x)))}
     return up.concat(lo.reverse());
@@ -679,7 +680,7 @@ struct AO{@builtin(position) pos:vec4f,@location(0) col:vec4f};
   const gHs=()=>CFG.span/CFG.chord*GG.C/2;
   function dAt(w,zr){const t=skinW(zr/gHs());return w.dl*(1-t)+w.dr*t}
   function sectionG(d,aoa,M){
-    const a=aoa*Math.PI/180,q=.25,up=[],lo=[];
+    const a=aoa*Math.PI/180,q=CFG.pivot,up=[],lo=[];
     const pt=(x,y)=>{const[X,Y]=deform(x,y,d),dx=X-q;return[GG.X0+(q+dx*Math.cos(a)+Y*Math.sin(a))*GG.C,GG.Y0+(-dx*Math.sin(a)+Y*Math.cos(a))*GG.C]};
     for(let i=0;i<=M;i++){const x=(1-Math.cos(i/M*Math.PI))/2;up.push(pt(x,yt(x)));lo.push(pt(x,-yt(x)))}
     return up.concat(lo.reverse());
