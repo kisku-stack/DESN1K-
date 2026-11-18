@@ -54,6 +54,7 @@ body.hacked #hack{display:flex;animation:glitch .25s steps(2) infinite}
 #hack button{background:none;color:#ff4a5e;border-color:#ff4a5e}
 @keyframes glitch{0%{transform:translate(0)}50%{transform:translate(-3px,2px);text-shadow:3px 0 #0ff,-3px 0 #f0f}100%{transform:translate(2px,-1px)}}
 .ana{border:2px solid var(--stamp);background:#f3ecd2;padding:10px;margin-bottom:10px}
+.ctl{display:flex;align-items:center;gap:8px}.ctl .sl{flex:1}.num{width:72px}.u,.lab{color:var(--dim);font-size:13px}.lab{min-width:44px}
 .toast{color:var(--stamp);font-weight:bold;min-height:1.4em}
 #flowLoad{display:none;position:absolute;inset:0;background:#0e161ecc;color:var(--paper);align-items:center;justify-content:center;text-align:center}
 #flowLoad.show{display:flex}
@@ -90,26 +91,26 @@ body.hacked #hack{display:flex;animation:glitch .25s steps(2) infinite}
     <label><input type="checkbox" id="sm" checked> Smoothing</label></div>
   <div class="toast" id="toast"></div>
   <div class="ana" id="anaBox" style="display:none"><b>Analogue channel active</b> <span id="potV">0</span>/1023
-    <div class="sl" style="margin:8px 0"><input type="range" id="pot" min="0" max="1023" value="512"></div>
+    <div class="ctl" style="margin:8px 0"><div class="sl"><input type="range" id="pot" min="0" max="1023" value="512"></div><input type="number" class="num" id="pot_n" value="512"></div>
     <div class="sub" id="potNote"></div><button id="flip">Button: pot controls vertical</button></div>
 
   <div class="mode" id="aoaBox"><header>Angle of attack <span id="aoaV">0°</span></header>
-    <div class="sl" style="margin-top:8px"><input type="range" id="aoa" min="-15" max="15" value="0"></div></div>
+    <div class="ctl" style="margin-top:8px"><div class="sl"><input type="range" id="aoa" min="-15" max="15" value="0"></div><input type="number" class="num" id="aoa_n" value="0"><span class="u">°</span></div></div>
 
   <div class="mode act" data-m="1"><header><span>Mode 1: Roll + morph</span><span id="v1">0</span></header><div class="body">
-    <div class="sl"><input type="range" id="roll" min="-100" max="100" value="0"><i class="ghost" id="g1"></i></div>
+    <div class="ctl"><span class="lab">roll</span><div class="sl"><input type="range" id="roll" min="-100" max="100" value="0"><i class="ghost" id="g1"></i></div><input type="number" class="num" id="roll_n" value="0"><span class="u">%</span></div>
     <div class="sub" style="margin:10px 0 2px">Vertical morph (both wings together)</div>
-    <div class="sl"><input type="range" id="rollMorph" min="-100" max="100" value="0"><i class="ghost" id="g1m"></i></div>
+    <div class="ctl"><span class="lab">morph</span><div class="sl"><input type="range" id="rollMorph" min="-100" max="100" value="0"><i class="ghost" id="g1m"></i></div><input type="number" class="num" id="rollMorph_n" value="0"><span class="u">%</span></div>
     <div class="sub" style="margin-top:8px">Top slider: roll, the wings differ by at most <span id="rollTxt">25</span>°. Second slider: vertical morph. Bars: blue = commanded, red = real.</div>
     <div class="lr"><span>L</span><div class="bar"><i class="c" id="cL"></i><i class="g" id="gL"></i></div></div>
     <div class="lr"><span>R</span><div class="bar"><i class="c" id="cR"></i><i class="g" id="gR"></i></div></div></div></div>
 
   <div class="mode off" data-m="2"><header><span>Mode 2: Vertical morph (top = up, bottom = down)</span><span id="v2">0%</span></header><div class="body">
-    <div class="pair"><div class="sl v"><input type="range" id="morph" min="-100" max="100" value="0"><i class="ghost" id="g2"></i></div></div></div></div>
+    <div class="pair"><div><div class="sl v"><input type="range" id="morph" min="-100" max="100" value="0"><i class="ghost" id="g2"></i></div><input type="number" class="num" id="morph_n" value="0"> %</div></div></div></div>
 
   <div class="mode off" data-m="3"><header><span>Mode 3: Independent</span><span id="v3">-</span></header><div class="body">
-    <div class="pair"><div><div class="sl v"><input type="range" id="sl" min="-100" max="100" value="0"><i class="ghost" id="g3l"></i></div>L</div>
-    <div><div class="sl v"><input type="range" id="sr" min="-100" max="100" value="0"><i class="ghost" id="g3r"></i></div>R</div></div></div></div>
+    <div class="pair"><div><div class="sl v"><input type="range" id="sl" min="-100" max="100" value="0"><i class="ghost" id="g3l"></i></div>L <input type="number" class="num" id="sl_n" value="0"> %</div>
+    <div><div class="sl v"><input type="range" id="sr" min="-100" max="100" value="0"><i class="ghost" id="g3r"></i></div>R <input type="number" class="num" id="sr_n" value="0"> %</div></div></div></div>
 
   <div class="row"><span>Hinge limits (deg)</span>
     <input type="number" id="lmin" value="0" style="width:70px"><input type="number" id="lmax" value="60" style="width:70px"></div>
@@ -217,8 +218,10 @@ function ghosts(){
   $('#cL').style.left=pos(-angleToU(tl))+'%';$('#cR').style.left=pos(-angleToU(tr))+'%';
   $('#cL').style.display=$('#cR').style.display=S.src==='A'?'none':'block';
 }
+const NUMS=['aoa','roll','rollMorph','morph','sl','sr','pot'];   // every slider also has a number box
 function render(){
   const lv=isLive();
+  NUMS.forEach(id=>{const n=$('#'+id+'_n');if(n&&document.activeElement!==n)n.value=$('#'+id).value});$('#pot_n').disabled=lv;
   $('#anaBox').style.display=S.src==='A'?'block':'none';
   $('#pot').disabled=lv;if(lv)$('#pot').value=S.pot;$('#potV').textContent=S.pot;
   $('#flip').style.display=lv?'none':'inline-block';
@@ -255,6 +258,10 @@ function setDisco(on){S.disco=on;document.body.classList.toggle('disco',on);send
 // ---- wiring up UI ----
 $$('.mode[data-m] header').forEach(h=>h.onclick=()=>setMode(+h.parentElement.dataset.m));
 $$('input[type=range]').forEach(i=>i.oninput=()=>{if(i.id==='aoa')send('AOA,'+i.value);if(i.id==='pot'&&!isLive())S.pot=+i.value;render()});
+NUMS.forEach(id=>{const sl=$('#'+id),n=$('#'+id+'_n');n.min=sl.min;n.max=sl.max;n.step=1;
+  const apply=fin=>{if(n.value===''||n.value==='-')return;let v=Math.round(+n.value);if(!isFinite(v))return;v=Math.max(+sl.min,Math.min(+sl.max,v));
+    sl.value=v;if(fin)n.value=v;sl.dispatchEvent(new Event('input'))};
+  n.oninput=()=>apply(false);n.onchange=()=>apply(true)});
 $('#srcD').onclick=()=>{if(!S.hacked)setSrc('D')};$('#srcA').onclick=()=>setSrc('A');
 $('#sm').onchange=e=>{S.smooth=e.target.checked;send('SM,'+(S.smooth?1:0))};
 $('#lmin').onchange=$('#lmax').onchange=pushLimits;
