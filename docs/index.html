@@ -85,6 +85,7 @@ body.hacked #hack{display:flex;animation:glitch .25s steps(2) infinite}
   <div class="stamp">EYES ONLY</div>
   <div class="row" style="margin:0">
     <span class="led" id="led" title="Stand LED"></span><span id="ledTxt">LED</span>
+    <button id="showBtn">Light show: off</button>
     <button id="connect">Connect Arduino</button>
   </div>
 </div>
@@ -168,7 +169,7 @@ CFG.pivot=CFG.pivotMM/CFG.chord;CFG.hinge=CFG.hingeMM/CFG.chord;   // as fractio
 // weight 0 (left servo) .. 1 (right servo) at span position t in [-1,1], continuous because of the skin
 const skinW=t=>{const k=Math.max(.05,CFG.skin);return Math.max(0,Math.min(1,(t+k)/(2*k)))};
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-const S={mode:1,src:'D',smooth:true,hacked:false,disco:false,conn:false,pot:512,inv:false,lastT:0,idle:false,lastAct:performance.now()};
+const S={mode:1,src:'D',smooth:true,hacked:false,disco:false,conn:false,pot:512,inv:false,lastT:0,show:false};
 const A={l:0,r:0}; let port,writer,logoClicks=0;
 const AN={vv:0,rv:0,base:0,pb:512};   // simulated analogue: vertical / roll values (-1..1), value when the pot took over, pot then
 const isLive=()=>S.conn&&performance.now()-S.lastT<600; // real telemetry arriving
@@ -225,13 +226,12 @@ function drawAirfoil(avg,aoa){
 
 // LED colours: each state is a clearly different colour (match updateLed() in the Arduino sketch)
 // show palette, same order as paletteColor() in the Arduino sketch: red, yellow, green, cyan, blue, magenta, white
-const LED_PAL=['#ff0000','#ffe000','#00ff00','#00ffff','#0000ff','#ff00ff','#ffffff'],IDLE_MS=10000;
-const isIdleNow=()=>!S.hacked&&!S.disco&&(isLive()?S.idle:performance.now()-S.lastAct>IDLE_MS);
+const LED_PAL=['#ff0000','#ffe000','#00ff00','#00ffff','#0000ff','#ff00ff','#ffffff'],SHOW_MS=1000;
 function ledColor(){
   const t=performance.now();
   if(S.hacked)return'#ff0000';
   if(S.disco)return t%80<60?LED_PAL[(Math.floor(t/80)*3)%7]:'#111';     // disco: fast strobe, jumping between colours
-  if(isIdleNow())return t%180<150?LED_PAL[Math.floor(t/180)%7]:'#111';  // idle: light show through every colour
+  if(S.show)return LED_PAL[Math.floor(t/SHOW_MS)%7];                    // light show: one colour per second
   if(S.src==='A')return S.inv?'#ffffff':'#ff0000';       // analogue: white = pot controls roll, red = pot controls vertical
   return{1:'#0000ff',2:'#00ff00',3:'#ff00ff'}[S.mode];   // digital: blue / green / purple-magenta
 }
@@ -260,7 +260,8 @@ function render(){
   $('#v3').textContent=`${sg($('#sl').value)}% / ${sg($('#sr').value)}%`;$('#aoaV').textContent=sg($('#aoa').value)+'°';
   $('#lr').textContent=`${Math.round(A.l)}° / ${Math.round(A.r)}°`;
   const c=ledColor();$('#led').style.background=c;$('#led').style.boxShadow=`0 0 12px ${c}`;
-  $('#ledTxt').textContent=S.hacked?'ALERT':S.disco?'DISCO':isIdleNow()?'IDLE SHOW':S.src==='A'?(S.inv?'ANALOGUE ROLL':'ANALOGUE VERT'):['','ROLL','MORPH','INDEP'][S.mode];
+  $('#ledTxt').textContent=S.hacked?'ALERT':S.disco?'DISCO':S.show?'LIGHT SHOW':S.src==='A'?(S.inv?'ANALOGUE ROLL':'ANALOGUE VERT'):['','ROLL','MORPH','INDEP'][S.mode];
+  $('#showBtn').classList.toggle('on',S.show);$('#showBtn').textContent='Light show: '+(S.show?'on':'off');
   $('#rollTxt').textContent=CFG.rollDiff;
   drawAirfoil((A.l+A.r)/2,+$('#aoa').value);
   const tilt=(A.l-A.r)/span()*30;
@@ -279,6 +280,7 @@ function pushLimits(){
   if(!isFinite(a)||!isFinite(b)||a<0||b>180||b-a<5){
     $('#lmin').value=CFG.minA;$('#lmax').value=CFG.maxA;toast('Limits must be 0-180 deg with max at least 5 deg above min');return}
   CFG.minA=a;CFG.maxA=b;send(`LIM,${CFG.minA},${CFG.maxA}`)}
+function setShow(on){S.show=on;send('SHOW,'+(on?1:0));$('#showBtn').classList.toggle('on',on);$('#showBtn').textContent='Light show: '+(on?'on':'off');render()}
 function setDisco(on){S.disco=on;document.body.classList.toggle('disco',on);send('DISCO,'+(on?1:0));toast(on?'Show mode enabled':'');}
 
 // ---- wiring up UI ----
@@ -291,12 +293,12 @@ NUMS.forEach(id=>{const sl=$('#'+id),n=$('#'+id+'_n');n.min=sl.min;n.max=sl.max;
 $('#srcD').onclick=()=>{if(!S.hacked)setSrc('D')};$('#srcA').onclick=()=>setSrc('A');
 $('#sm').onchange=e=>{S.smooth=e.target.checked;send('SM,'+(S.smooth?1:0))};
 $('#lmin').onchange=$('#lmax').onchange=pushLimits;
+$('#showBtn').onclick=()=>{if(!S.hacked)setShow(!S.show)};
 $('#logo').onclick=()=>{if(++logoClicks>=5){logoClicks=0;setDisco(!S.disco)}};
 $('#hackBtn').onclick=()=>{S.hacked=true;document.body.classList.add('hacked');send('ALERT,1');setSrc('A',true);render()};
 $('#restore').onclick=()=>{S.hacked=false;document.body.classList.remove('hacked');send('ALERT,0');setSrc('D');};
 
 $('#flip').onclick=()=>{S.inv=!S.inv;AN.base=S.inv?AN.rv:AN.vv;AN.pb=S.pot;render()};   // switch the pot between vertical and roll; nothing resets
-['pointerdown','keydown','input'].forEach(ev=>document.addEventListener(ev,()=>{S.lastAct=performance.now()}));   // any use of the page ends the idle show
 // ---- Web Serial ----
 $('#connect').onclick=async()=>{
   if(!('serial' in navigator)){toast('Use Chrome or Edge for USB link');return}
@@ -321,7 +323,7 @@ function telemetry(l){
   // only react when the Arduino's flag CHANGES (physical switch), so it can't fight the UI button
   if(an!==lastAn&&an!==S.src&&!S.hacked){S.src=an;toast(an==='A'?'Analogue override detected':'')}
   lastAn=an;
-  S.idle=!!+p[7];
+  if(!S.hacked)S.show=!!+p[7];
   const d=!!+p[6];if(d!==S.disco){S.disco=d;document.body.classList.toggle('disco',d)}
   render();
 }
